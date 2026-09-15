@@ -1,0 +1,64 @@
+[2026-09-15 09:32]
+PHASE: Phase 0 — Baseline
+ACTION: Project inspection, baseline build verified, configured app identity (Sahayog), adaptive icon, manifest permissions, unique applicationId.
+FILES: metadata.json, strings.xml, settings.gradle.kts, app/build.gradle.kts, AndroidManifest.xml, ic_launcher_foreground.xml, ic_launcher_background.xml, AI_PROGRESS_LOG.txt, AI_CONTEXT.md
+RESULT: Baseline build successful
+STATUS: Complete
+NEXT: Create domain models, repository, wage engine, hash-chain ledger, and role switching architecture.
+
+[2026-09-15 09:34]
+PHASE: Phase 5, 6, 7, 8 Data & Engines
+ACTION: Created domain models (Worker, Customer, Cooperative, Job, LedgerEntry), WageEngine (centralized minimum wage map, overtime 1.5x, strictly Long paise math), LedgerEngine (SHA-256 hash chaining from Genesis, verifyHash without fake results), FairDispatchEngine (Rating-Greedy vs Equitable, Gini coefficient and Top-20% share calculation), SeedData (20 workers, 10 customers, 3 cooperatives, 30+ jobs across all statuses), and centralized reactive CoopRepository.
+FILES: Models.kt, WageEngine.kt, LedgerEngine.kt, FairDispatchEngine.kt, SeedData.kt, CoopRepository.kt
+RESULT: Build passed
+STATUS: Complete
+NEXT: Implement UI theme, role switching top bar, and role-specific screens (Customer UI, Worker Flow, Admin Flow, Fairness UI).
+
+[2026-09-15 09:40]
+PHASE: Phase 1, 2, 3, 4, 9, 10, 11, 12 — UI, Role Switching, Flows & Polish
+ACTION: Implemented RoleSwitcherBar (CUSTOMER | WORKER | ADMIN), CustomerScreen (Service Category grid, minimum wage floor validation, overtime 1.5x calculation, escrow breakdown preview, booking history, custom job requests), WorkerScreen (Available skill-matched jobs, Accept flow, My Jobs, Camera/GPS proof submission dialog with local fallback, Worker earnings breakdown, SHA-256 hash-chain ledger history, real verify hash recomputation, full Genesis chain verification), AdminScreen (Cooperative stats, Dispute/Release queue with proof inspector, Release to Worker with ledger creation & escrow clearance, Refund Customer, Member management verification toggle, Governance fee slider, Canvas fund distribution chart), FairnessScreen (live comparison of Rating-Greedy vs Equitable dispatch, Gini coefficient calculation, Top-20% wealth share Canvas chart), and reset demo data dialog. All unit and UI tests updated and applet compiled cleanly.
+FILES: Color.kt, Theme.kt, CommonComponents.kt, CustomerScreen.kt, WorkerScreen.kt, AdminScreen.kt, FairnessScreen.kt, MainActivity.kt, ExampleRobolectricTest.kt, GreetingScreenshotTest.kt
+RESULT: Build succeeded - the applet is compiled cleanly!
+STATUS: Complete
+NEXT: Data seeding and image-oriented accessibility enhancements.
+
+[2026-09-15 09:49]
+PHASE: Phase 13 — Data Seeding, Role Switcher UI & Image-Oriented Accessibility
+ACTION:
+1. Data Seeding: Populated full ecosystem with 20 workers (varied skills, ratings 3.8-4.9, earnings from ₹500 to ₹38,500, verification states), 10 customers across major Bangalore localities, 3 cooperatives (Bangalore, Mysuru, Hubballi), and 39+ jobs across all statuses (14 COMPLETED with SHA-256 chained ledger blocks, 4 ACCEPTED with held escrow, 3 IN_PROGRESS with submitted photo proofs, 2 DISPUTED with customer feedback, and 16 PENDING in pool).
+2. Visually Obvious Role Switcher: Redesigned RoleSwitcherBar with 3 prominent high-contrast cards (CUSTOMER, WORKER, COOP ADMIN). The currently active role is visually obvious through distinct 2.5dp colored border strokes, active container highlights, glowing 'ACTIVE ✓' badges, large 42dp circular icon badges, bilingual subtitles (ग्राहक, कामगार, सहकारी), and a top live mode status pill.
+3. Image-Oriented Accessible UI (Elderly & Low-Literacy):
+   - Generated high-quality 3D visual assets: img_coop_hero.jpg, img_service_electrician.jpg, img_service_plumber.jpg, img_service_carpenter.jpg, img_service_cleaning.jpg.
+   - Added Community Hero Banner to Customer screen for immediate visual connection.
+   - Added 4-Step Pictorial Flow Guide (👆 1. Choose -> 🛡️ 2. Safe -> 📸 3. Photo -> 💰 4. Pay) allowing illiterate users to understand cooperative protection at a glance.
+   - Transformed ServiceCategoryCard into rich image cards with bilingual titles, emerald wage-floor tags (🪙 ₹250/hr), and audio speaker buttons 🔊 for spoken rate announcements.
+   - Added quick preset duration chips (1 hr, 2 hrs, 4 hrs, Full Day 8h) and image header to BookingModalDialog to eliminate typing complexity for elderly users.
+   - Updated StatusBadge across the entire app with pictorial icons (Hourglass for pending, ThumbUp for accepted, Camera for in-progress, Check for completed, Warning for dispute, Reset for refund) and bilingual text.
+FILES: SeedData.kt, CommonComponents.kt, CustomerScreen.kt, drawable/img_coop_hero.jpg, drawable/img_service_electrician.jpg, drawable/img_service_plumber.jpg, drawable/img_service_carpenter.jpg, drawable/img_service_cleaning.jpg, AI_PROGRESS_LOG.txt, AI_CONTEXT.md
+RESULT: Applet compiled and verified cleanly.
+STATUS: Complete
+NEXT: Final demo presentation and CUJ walkthrough.
+
+[2026-09-15 10:05]
+PHASE: Phase 14 — First-Time Role-Gating & Full English/Marathi Localization
+ACTION:
+1. First-Time Role Gating Screen:
+   - Implemented RoleSelectionScreen (Consumer vs. Provider) gating the entire app on first launch.
+   - Clean, minimal, pictorial interface designed for rural and low-literacy users with high-contrast cards, large touch targets, bold descriptive icons, and audio preview buttons.
+   - Choosing "मी ग्राहक आहे / I need services" routes directly to the simplified Customer interface.
+   - Choosing "मी कामगार आहे / I want to work" routes directly to the Worker interface.
+   - Users are not overwhelmed by seeing both interfaces simultaneously.
+2. Complete App Interface Language Toggle (English & Marathi Only):
+   - Added top-bar 1-tap language switch chip (मराठी / English) persisting via CoopRepository StateFlow.
+   - Integrated Localization.kt system translating customer categories, booking dialogs, wage floors, overtime warnings, worker job cards, escrow status badges, and admin metrics into rural-friendly Marathi and English.
+   - Enabled audio spoken feedback on category rates for illiterate users.
+3. Role Reset Capability:
+   - Added top-bar role reset/switcher button so evaluators or shared household devices can easily return to the role selection gate.
+4. Data Seeding Verification:
+   - Verified 20 workers with diverse skills/ratings/earnings, 10 customers, 3 cooperatives, and 39 jobs across all statuses (14 completed, 4 accepted, 3 in-progress, 2 disputed, 16 pending).
+FILES: MainActivity.kt, RoleSelectionScreen.kt, Localization.kt, CustomerScreen.kt, WorkerScreen.kt, AdminScreen.kt, SeedData.kt, AI_PROGRESS_LOG.txt, AI_CONTEXT.md
+RESULT: Build verified and succeeded.
+STATUS: Complete
+NEXT: Hackathon demo presentation.
+
+
