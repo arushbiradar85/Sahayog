@@ -98,20 +98,65 @@ object SeedData {
         )
 
         val completedSeeds = listOf(
+            // w_1 (Electrician - star earner)
             CompletedJobSeed("job_c1", "cust_1", "w_1", "Electrician", "Indiranagar", 120, 60000L, 1726000000L),
             CompletedJobSeed("job_c2", "cust_2", "w_1", "Electrician", "Koramangala", 180, 90000L, 1726086400L),
-            CompletedJobSeed("job_c3", "cust_3", "w_2", "Plumber", "HSR Layout", 120, 55000L, 1726000000L),
-            CompletedJobSeed("job_c4", "cust_4", "w_2", "Plumber", "Whitefield", 240, 110000L, 1726086400L),
-            CompletedJobSeed("job_c5", "cust_5", "w_3", "Carpenter", "Jayanagar", 180, 85000L, 1726000000L),
-            CompletedJobSeed("job_c6", "cust_6", "w_4", "Painter", "Malleshwaram", 480, 180000L, 1726000000L),
-            CompletedJobSeed("job_c7", "cust_7", "w_5", "Cleaner", "Electronic City", 180, 60000L, 1726000000L),
-            CompletedJobSeed("job_c8", "cust_8", "w_6", "Electrician", "JP Nagar", 120, 60000L, 1726000000L),
-            CompletedJobSeed("job_c9", "cust_9", "w_7", "Technician", "BTM Layout", 120, 65000L, 1726000000L),
-            CompletedJobSeed("job_c10", "cust_10", "w_8", "Caregiver", "Bellandur", 240, 95000L, 1726000000L),
-            CompletedJobSeed("job_c11", "cust_1", "w_9", "Plumber", "Indiranagar", 150, 68000L, 1726090000L),
-            CompletedJobSeed("job_c12", "cust_3", "w_10", "Gardener", "HSR Sector 1", 180, 65000L, 1726100000L),
-            CompletedJobSeed("job_c13", "cust_5", "w_11", "Electrician", "Jayanagar 4th", 120, 50000L, 1726110000L),
-            CompletedJobSeed("job_c14", "cust_7", "w_12", "Cleaner", "Electronic City Phase 1", 180, 55000L, 1726120000L)
+            CompletedJobSeed("job_c3", "cust_4", "w_1", "Electrician", "Whitefield", 240, 120000L, 1726172800L),
+            CompletedJobSeed("job_c4", "cust_5", "w_1", "Electrician", "Jayanagar", 180, 85000L, 1726259200L),
+            CompletedJobSeed("job_c5", "cust_7", "w_1", "Electrician", "Electronic City", 120, 60000L, 1726345600L),
+
+            // w_2 (Plumber - star earner)
+            CompletedJobSeed("job_c6", "cust_3", "w_2", "Plumber", "HSR Layout", 120, 55000L, 1726000000L),
+            CompletedJobSeed("job_c7", "cust_4", "w_2", "Plumber", "Whitefield", 240, 110000L, 1726086400L),
+            CompletedJobSeed("job_c8", "cust_8", "w_2", "Plumber", "JP Nagar", 180, 80000L, 1726172800L),
+            CompletedJobSeed("job_c9", "cust_9", "w_2", "Plumber", "BTM Layout", 120, 60000L, 1726259200L),
+
+            // w_3 (Carpenter - high earner)
+            CompletedJobSeed("job_c10", "cust_5", "w_3", "Carpenter", "Jayanagar", 180, 85000L, 1726000000L),
+            CompletedJobSeed("job_c11", "cust_2", "w_3", "Carpenter", "Koramangala", 240, 115000L, 1726086400L),
+            CompletedJobSeed("job_c12", "cust_6", "w_3", "Carpenter", "Malleshwaram", 180, 90000L, 1726172800L),
+            CompletedJobSeed("job_c13", "cust_10", "w_3", "Carpenter", "Bellandur", 120, 60000L, 1726259200L),
+
+            // w_4 (Painter - high earner)
+            CompletedJobSeed("job_c14", "cust_6", "w_4", "Painter", "Malleshwaram", 480, 180000L, 1726000000L),
+            CompletedJobSeed("job_c15", "cust_1", "w_4", "Painter", "Indiranagar", 360, 140000L, 1726086400L),
+            CompletedJobSeed("job_c16", "cust_3", "w_4", "Painter", "HSR Layout", 240, 95000L, 1726172800L),
+
+            // w_5 (Cleaner - mid earner)
+            CompletedJobSeed("job_c17", "cust_7", "w_5", "Cleaner", "Electronic City", 180, 60000L, 1726000000L),
+            CompletedJobSeed("job_c18", "cust_8", "w_5", "Cleaner", "JP Nagar", 240, 75000L, 1726086400L),
+            CompletedJobSeed("job_c19", "cust_9", "w_5", "Cleaner", "BTM Layout", 180, 55000L, 1726172800L),
+
+            // w_6 (Electrician - mid earner)
+            CompletedJobSeed("job_c20", "cust_8", "w_6", "Electrician", "JP Nagar", 120, 60000L, 1726000000L),
+            CompletedJobSeed("job_c21", "cust_10", "w_6", "Electrician", "Bellandur", 180, 85000L, 1726086400L),
+
+            // w_7 (Technician - mid earner)
+            CompletedJobSeed("job_c22", "cust_9", "w_7", "Technician", "BTM Layout", 120, 65000L, 1726000000L),
+            CompletedJobSeed("job_c23", "cust_2", "w_7", "Technician", "Koramangala", 180, 90000L, 1726086400L),
+
+            // w_8 (Caregiver - mid earner)
+            CompletedJobSeed("job_c24", "cust_10", "w_8", "Caregiver", "Bellandur", 240, 95000L, 1726000000L),
+            CompletedJobSeed("job_c25", "cust_5", "w_8", "Caregiver", "Jayanagar", 180, 70000L, 1726086400L),
+
+            // w_9 (Plumber - mid earner)
+            CompletedJobSeed("job_c26", "cust_1", "w_9", "Plumber", "Indiranagar", 150, 68000L, 1726090000L),
+            CompletedJobSeed("job_c27", "cust_3", "w_9", "Plumber", "HSR Layout", 120, 55000L, 1726172800L),
+
+            // w_10 (Gardener - mid earner)
+            CompletedJobSeed("job_c28", "cust_3", "w_10", "Gardener", "HSR Sector 1", 180, 65000L, 1726100000L),
+            CompletedJobSeed("job_c29", "cust_4", "w_10", "Gardener", "Whitefield", 120, 45000L, 1726172800L),
+
+            // w_11 to w_18 (Low earners / newer members - 1 job each)
+            CompletedJobSeed("job_c30", "cust_5", "w_11", "Electrician", "Jayanagar 4th", 120, 50000L, 1726110000L),
+            CompletedJobSeed("job_c31", "cust_7", "w_12", "Cleaner", "Electronic City Phase 1", 180, 55000L, 1726120000L),
+            CompletedJobSeed("job_c32", "cust_2", "w_13", "Plumber", "Koramangala 1st Block", 120, 50000L, 1726130000L),
+            CompletedJobSeed("job_c33", "cust_6", "w_14", "Carpenter", "Malleshwaram 7th Cross", 120, 55000L, 1726140000L),
+            CompletedJobSeed("job_c34", "cust_8", "w_15", "Painter", "JP Nagar 1st Phase", 240, 90000L, 1726150000L),
+            CompletedJobSeed("job_c35", "cust_9", "w_16", "Technician", "BTM 2nd Stage", 120, 55000L, 1726160000L),
+            CompletedJobSeed("job_c36", "cust_4", "w_17", "Driver", "Whitefield Main Rd", 180, 75000L, 1726170000L),
+            CompletedJobSeed("job_c37", "cust_10", "w_18", "Gardener", "Bellandur Gate", 120, 40000L, 1726180000L)
+            // w_19 and w_20 are unverified with 0 completed jobs and 0 ledger entries
         )
 
         // Generate chained ledger entries per worker

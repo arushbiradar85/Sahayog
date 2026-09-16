@@ -9,7 +9,8 @@ object FairDispatchEngine {
     data class DispatchAssignment(
         val job: Job,
         val assignedWorker: Worker,
-        val workerWagePaise: Long
+        val workerWagePaise: Long,
+        val waitTimeMinutes: Int = 0
     )
 
     data class AlgorithmResult(
@@ -22,7 +23,9 @@ object FairDispatchEngine {
         val top20SharePercent: Double, // 0.0 to 100.0
         val totalDispatchedPaise: Long,
         val assignedCount: Int,
-        val totalWorkersConsidered: Int
+        val totalWorkersConsidered: Int,
+        val averageWaitTimeMinutes: Double = 0.0,
+        val maxWaitTimeMinutes: Int = 0
     )
 
     /**
@@ -40,6 +43,7 @@ object FairDispatchEngine {
         val currentEarnings = workers.associate { it.id to it.totalEarningsInPaise }.toMutableMap()
         val addedEarnings = workers.associate { it.id to 0L }.toMutableMap()
         val assignedJobCount = workers.associate { it.id to 0 }.toMutableMap()
+        val workerBusyMinutes = workers.associate { it.id to 0 }.toMutableMap()
         val assignments = mutableListOf<DispatchAssignment>()
         val unassigned = mutableListOf<Job>()
 
@@ -58,11 +62,13 @@ object FairDispatchEngine {
                 )!!
 
                 val payout = WageEngine.calculatePayoutSplit(job.priceInPaise, adminFeePercent)
-                assignments.add(DispatchAssignment(job, bestWorker, payout.workerWagePaise))
+                val waitTime = workerBusyMinutes[bestWorker.id] ?: 0
+                assignments.add(DispatchAssignment(job, bestWorker, payout.workerWagePaise, waitTime))
                 
                 currentEarnings[bestWorker.id] = (currentEarnings[bestWorker.id] ?: 0L) + payout.workerWagePaise
                 addedEarnings[bestWorker.id] = (addedEarnings[bestWorker.id] ?: 0L) + payout.workerWagePaise
                 assignedJobCount[bestWorker.id] = (assignedJobCount[bestWorker.id] ?: 0) + 1
+                workerBusyMinutes[bestWorker.id] = waitTime + job.durationMinutes
             } else {
                 unassigned.add(job)
             }
@@ -72,6 +78,8 @@ object FairDispatchEngine {
         val gini = calculateGini(earningsList)
         val top20 = calculateTop20Share(earningsList)
         val totalDispatched = assignments.sumOf { it.workerWagePaise }
+        val avgWaitTime = if (assignments.isNotEmpty()) assignments.map { it.waitTimeMinutes }.average() else 0.0
+        val maxWaitTime = assignments.maxOfOrNull { it.waitTimeMinutes } ?: 0
 
         return AlgorithmResult(
             algorithmName = "Rating-Greedy Dispatch",
@@ -83,7 +91,9 @@ object FairDispatchEngine {
             top20SharePercent = top20,
             totalDispatchedPaise = totalDispatched,
             assignedCount = assignments.size,
-            totalWorkersConsidered = workers.size
+            totalWorkersConsidered = workers.size,
+            averageWaitTimeMinutes = avgWaitTime,
+            maxWaitTimeMinutes = maxWaitTime
         )
     }
 
@@ -103,6 +113,7 @@ object FairDispatchEngine {
         val currentEarnings = workers.associate { it.id to it.totalEarningsInPaise }.toMutableMap()
         val addedEarnings = workers.associate { it.id to 0L }.toMutableMap()
         val assignedJobCount = workers.associate { it.id to 0 }.toMutableMap()
+        val workerBusyMinutes = workers.associate { it.id to 0 }.toMutableMap()
         val assignments = mutableListOf<DispatchAssignment>()
         val unassigned = mutableListOf<Job>()
 
@@ -121,11 +132,13 @@ object FairDispatchEngine {
                 )!!
 
                 val payout = WageEngine.calculatePayoutSplit(job.priceInPaise, adminFeePercent)
-                assignments.add(DispatchAssignment(job, bestWorker, payout.workerWagePaise))
+                val waitTime = workerBusyMinutes[bestWorker.id] ?: 0
+                assignments.add(DispatchAssignment(job, bestWorker, payout.workerWagePaise, waitTime))
 
                 currentEarnings[bestWorker.id] = (currentEarnings[bestWorker.id] ?: 0L) + payout.workerWagePaise
                 addedEarnings[bestWorker.id] = (addedEarnings[bestWorker.id] ?: 0L) + payout.workerWagePaise
                 assignedJobCount[bestWorker.id] = (assignedJobCount[bestWorker.id] ?: 0) + 1
+                workerBusyMinutes[bestWorker.id] = waitTime + job.durationMinutes
             } else {
                 unassigned.add(job)
             }
@@ -135,6 +148,8 @@ object FairDispatchEngine {
         val gini = calculateGini(earningsList)
         val top20 = calculateTop20Share(earningsList)
         val totalDispatched = assignments.sumOf { it.workerWagePaise }
+        val avgWaitTime = if (assignments.isNotEmpty()) assignments.map { it.waitTimeMinutes }.average() else 0.0
+        val maxWaitTime = assignments.maxOfOrNull { it.waitTimeMinutes } ?: 0
 
         return AlgorithmResult(
             algorithmName = "Equitable Cooperative Dispatch",
@@ -146,7 +161,9 @@ object FairDispatchEngine {
             top20SharePercent = top20,
             totalDispatchedPaise = totalDispatched,
             assignedCount = assignments.size,
-            totalWorkersConsidered = workers.size
+            totalWorkersConsidered = workers.size,
+            averageWaitTimeMinutes = avgWaitTime,
+            maxWaitTimeMinutes = maxWaitTime
         )
     }
 

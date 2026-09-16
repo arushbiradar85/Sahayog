@@ -42,30 +42,51 @@ class StartupViewModel(application: Application) : AndroidViewModel(application)
     fun submitLoginAndRole(
         name: String,
         phone: String,
-        locality: String,
+        areaLocality: String = "Indiranagar",
+        cityDistrict: String = "Bangalore",
+        landmark: String = "",
         role: Role,
         workerSkill: String = "Electrician",
+        experienceYears: Int = 4,
+        cooperativeBranch: String = "Bangalore Urban Workers Cooperative",
+        adminPosition: String = "Committee Secretary",
+        customerServiceInterest: String = "Floor Cleaning",
         onNavigated: (Role) -> Unit
     ) {
         viewModelScope.launch {
             val context = getApplication<Application>()
+            val locality = if (landmark.isNotBlank()) "$areaLocality, $cityDistrict (Near $landmark)" else "$areaLocality, $cityDistrict"
+
             // 1. Persist selection using Jetpack DataStore
             AppDataStore.saveUserProfile(
                 context = context,
                 name = name,
                 phone = phone,
-                locality = locality,
+                areaLocality = areaLocality,
+                cityDistrict = cityDistrict,
+                landmark = landmark,
                 role = role,
-                workerSkill = workerSkill
+                workerSkill = workerSkill,
+                experienceYears = experienceYears,
+                cooperativeBranch = cooperativeBranch,
+                adminPosition = adminPosition,
+                customerServiceInterest = customerServiceInterest
             )
 
-            // 2. Sync with Repository StateFlows
+            // 2. Sync with Repository StateFlows and UserPreferences
             CoopRepository.loginUser(
                 name = name,
                 phone = phone,
                 locality = locality,
                 role = role,
-                workerSkill = workerSkill
+                workerSkill = workerSkill,
+                areaLocality = areaLocality,
+                cityDistrict = cityDistrict,
+                landmark = landmark,
+                experienceYears = experienceYears,
+                cooperativeBranch = cooperativeBranch,
+                adminPosition = adminPosition,
+                customerServiceInterest = customerServiceInterest
             )
 
             _uiState.value = StartupUiState.Authenticated(role, name)

@@ -63,7 +63,10 @@ data class Job(
     val proofNotes: String? = null,
     val disputeComment: String? = null,
     val title: String = "$skill Service",
-    val description: String = ""
+    val description: String = "",
+    val createdAtTimestamp: Long = System.currentTimeMillis(),
+    val preferredTime: String = "",
+    val instructions: String = ""
 )
 
 data class LedgerEntry(

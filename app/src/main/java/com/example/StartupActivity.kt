@@ -70,9 +70,28 @@ class StartupActivity : ComponentActivity() {
                                 viewModel.submitLoginAndRole(
                                     name = name,
                                     phone = phone,
-                                    locality = locality,
+                                    areaLocality = locality.substringBefore(",").trim(),
+                                    cityDistrict = locality.substringAfter(",", "Bangalore").trim(),
                                     role = role,
                                     workerSkill = skill,
+                                    onNavigated = { targetRole ->
+                                        navigateToMain(targetRole)
+                                    }
+                                )
+                            },
+                            onCompleteOnboarding = { role, name, phone, area, city, landmark, skill, exp, branch, adminPos, interest ->
+                                viewModel.submitLoginAndRole(
+                                    name = name,
+                                    phone = phone,
+                                    areaLocality = area,
+                                    cityDistrict = city,
+                                    landmark = landmark,
+                                    role = role,
+                                    workerSkill = skill,
+                                    experienceYears = exp,
+                                    cooperativeBranch = branch,
+                                    adminPosition = adminPos,
+                                    customerServiceInterest = interest,
                                     onNavigated = { targetRole ->
                                         navigateToMain(targetRole)
                                     }

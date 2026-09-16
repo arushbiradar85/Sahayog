@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -7,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,14 +27,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Engineering
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
@@ -38,15 +50,22 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,539 +84,1064 @@ import com.example.data.repository.CoopRepository
 import com.example.util.AppLanguage
 import com.example.util.Localization
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun StartupScreen(
     onLoginSuccess: (Role) -> Unit = {},
     onLoginSuccessWithDetails: ((Role, String, String, String, String) -> Unit)? = null,
+    onCompleteOnboarding: ((Role, String, String, String, String, String, String, Int, String, String, String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val language by CoopRepository.appLanguage.collectAsState()
     val isMarathi = Localization.isMarathi(language)
 
-    var selectedRole by remember { mutableStateOf(Role.CUSTOMER) }
+    // Current step in 6-step onboarding wizard (1 = Welcome, 2 = Details, 3 = Address, 4 = Role, 5 = Role Info, 6 = Confirm)
+    var currentStep by remember { mutableIntStateOf(1) }
+
+    // Form inputs
     var nameInput by remember { mutableStateOf("Ramesh Patil") }
     var phoneInput by remember { mutableStateOf("9845012345") }
-    var localityInput by remember { mutableStateOf("Indiranagar, Bangalore") }
+    var areaInput by remember { mutableStateOf("Indiranagar") }
+    var cityInput by remember { mutableStateOf("Bangalore") }
+    var landmarkInput by remember { mutableStateOf("Near Metro Station") }
+    var selectedRole by remember { mutableStateOf(Role.CUSTOMER) }
+
+    // Role-specific fields
     var workerSkill by remember { mutableStateOf("Electrician") }
-    var skillDropdownExpanded by remember { mutableStateOf(false) }
+    var workerExperienceYears by remember { mutableIntStateOf(5) }
+    var workerBranch by remember { mutableStateOf("Bangalore Urban Workers Cooperative") }
+    var adminPosition by remember { mutableStateOf("Committee Secretary") }
+    var customerInterest by remember { mutableStateOf("Floor Cleaning") }
 
     val availableSkills = listOf("Electrician", "Plumber", "Carpenter", "Cleaning", "Painter", "Mason")
+    val availableBranches = listOf(
+        "Bangalore Urban Workers Cooperative",
+        "Mysuru Craftsmen Sahakari Sangha",
+        "North Karnataka Artisans Guild"
+    )
+    val customerServices = listOf("Floor Cleaning", "Electrician", "Plumber", "Carpenter", "Painter", "Gardening")
+    val adminPositions = listOf("Committee Secretary", "Board President", "Treasurer", "Dispatch Officer")
+
+    var skillDropdownExpanded by remember { mutableStateOf(false) }
+    var branchDropdownExpanded by remember { mutableStateOf(false) }
+
+    // Progress (1..6)
+    val progress = currentStep / 6f
+
+    fun completeOnboarding() {
+        val fullLocality = if (landmarkInput.isNotBlank()) "$areaInput, $cityInput (Near $landmarkInput)" else "$areaInput, $cityInput"
+        if (onCompleteOnboarding != null) {
+            onCompleteOnboarding(
+                selectedRole,
+                nameInput,
+                phoneInput,
+                areaInput,
+                cityInput,
+                landmarkInput,
+                workerSkill,
+                workerExperienceYears,
+                workerBranch,
+                adminPosition,
+                customerInterest
+            )
+        } else if (onLoginSuccessWithDetails != null) {
+            onLoginSuccessWithDetails(
+                selectedRole,
+                nameInput,
+                phoneInput,
+                fullLocality,
+                workerSkill
+            )
+        } else {
+            onLoginSuccess(selectedRole)
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            // Language Switcher & Official Cooperative Header
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Translate,
-                                contentDescription = "Language",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isMarathi) "भाषा निवडा:" else "Select Language:",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surface)
-                                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(16.dp))
-                                .padding(2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            val marathiActive = isMarathi
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (marathiActive) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                    .clickable { CoopRepository.setLanguage(AppLanguage.MARATHI) }
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    .testTag("lang_marathi_chip")
-                            ) {
-                                Text(
-                                    "मराठी",
-                                    color = if (marathiActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = if (marathiActive) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (!marathiActive) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                    .clickable { CoopRepository.setLanguage(AppLanguage.ENGLISH) }
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    .testTag("lang_english_chip")
-                            ) {
-                                Text(
-                                    "English",
-                                    color = if (!marathiActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = if (!marathiActive) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Minimal, Normalized Service-Oriented Brand Header
-            item {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
+            // Top Bar: Step Indicator & Language Switcher
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (currentStep > 1) {
+                    IconButton(
+                        onClick = { currentStep-- },
+                        modifier = Modifier.testTag("onboarding_back_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = "Sahayog Cooperative",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(26.dp)
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
                         )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = if (isMarathi) "सहयोग कामगार सहकारी संस्था" else "Sahayog Workers Cooperative",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = if (isMarathi) "सदस्य नोंदणी व भूमिका निवड (Role & Login)" else "Member Login & Role Onboarding",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                } else {
+                    Spacer(modifier = Modifier.width(48.dp))
                 }
-            }
 
-            // Quick Demo Presets (for fast evaluation)
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.Start
-                ) {
-                    Text(
-                        text = if (isMarathi) "त्वरित माहिती भरा (Quick Fill):" else "Quick Demo Fill:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // Customer preset
-                        PresetChip(
-                            label = if (isMarathi) "ग्राहक (रमेश)" else "Customer (Ramesh)",
-                            isSelected = selectedRole == Role.CUSTOMER && nameInput == "Ramesh Patil",
-                            onClick = {
-                                selectedRole = Role.CUSTOMER
-                                nameInput = "Ramesh Patil"
-                                phoneInput = "9845012345"
-                                localityInput = "Indiranagar, Bangalore"
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                        // Worker preset
-                        PresetChip(
-                            label = if (isMarathi) "कामगार (सुनील)" else "Worker (Sunil)",
-                            isSelected = selectedRole == Role.WORKER && nameInput == "Sunil Kumar",
-                            onClick = {
-                                selectedRole = Role.WORKER
-                                nameInput = "Sunil Kumar"
-                                phoneInput = "9876543210"
-                                localityInput = "Koramangala, Bangalore"
-                                workerSkill = "Electrician"
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                        // Admin preset
-                        PresetChip(
-                            label = if (isMarathi) "समिती (Admin)" else "Admin (Board)",
-                            isSelected = selectedRole == Role.COOPERATIVE_ADMIN,
-                            onClick = {
-                                selectedRole = Role.COOPERATIVE_ADMIN
-                                nameInput = "Cooperative Board"
-                                phoneInput = "9811122233"
-                                localityInput = "Bangalore Central"
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
+                Text(
+                    text = if (isMarathi) "पायरी $currentStep / ६" else "Step $currentStep of 6",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold
+                )
 
-            // STEP 1: LOGIN DETAILS
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.VerifiedUser,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isMarathi) "१. वापरकर्ता माहिती (Login Profile)" else "1. User Information",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // Name
-                        OutlinedTextField(
-                            value = nameInput,
-                            onValueChange = { nameInput = it },
-                            label = { Text(if (isMarathi) "पूर्ण नाव (Full Name)" else "Full Name") },
-                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("login_name_input")
-                        )
-
-                        // Phone
-                        OutlinedTextField(
-                            value = phoneInput,
-                            onValueChange = { phoneInput = it },
-                            label = { Text(if (isMarathi) "मोबाईल नंबर (Phone Number)" else "Phone Number") },
-                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("login_phone_input")
-                        )
-
-                        // Locality
-                        OutlinedTextField(
-                            value = localityInput,
-                            onValueChange = { localityInput = it },
-                            label = { Text(if (isMarathi) "गाव / शहर परिसर (Area / Village)" else "Village / City Locality") },
-                            leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("login_locality_input")
-                        )
-                    }
-                }
-            }
-
-            // STEP 2: SELECT ROLE (Minimal & Service Oriented)
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = if (isMarathi) "२. तुमची भूमिका निवडा (Select Role)" else "2. Select Your Role",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    // Role 1: Consumer
-                    ServiceRoleCard(
-                        role = Role.CUSTOMER,
-                        isSelected = selectedRole == Role.CUSTOMER,
-                        title = if (isMarathi) "ग्राहक (Consumer / Home Owner)" else "Customer / Consumer",
-                        tagline = if (isMarathi) "घरगुती दुरुस्ती व कारागीर सेवा हवी आहे" else "Need verified household, repair or trade services",
-                        icon = Icons.Default.Person,
-                        badge = if (isMarathi) "हमीभाव व एस्क्रो सुरक्षा" else "Escrow Protected",
-                        accentColor = Color(0xFF0284C7),
-                        onClick = { selectedRole = Role.CUSTOMER },
-                        tag = "role_choice_customer"
-                    )
-
-                    // Role 2: Worker / Provider
-                    ServiceRoleCard(
-                        role = Role.WORKER,
-                        isSelected = selectedRole == Role.WORKER,
-                        title = if (isMarathi) "कारागीर / कामगार (Worker & Artisan)" else "Worker & Service Provider",
-                        tagline = if (isMarathi) "हक्काची मजुरी, हमीभाव आणि थेट काम हवे आहे" else "Want verified local jobs with guaranteed minimum wage",
-                        icon = Icons.Default.Engineering,
-                        badge = if (isMarathi) "किमान वेतन व कल्याण निधी" else "Guaranteed Wage Floor",
-                        accentColor = Color(0xFF059669),
-                        onClick = { selectedRole = Role.WORKER },
-                        tag = "role_choice_worker"
-                    )
-
-                    // If worker selected, show skill selector
-                    if (selectedRole == Role.WORKER) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 12.dp, end = 12.dp, top = 2.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF059669).copy(alpha = 0.08f)),
-                            border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.3f))
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text(
-                                    text = if (isMarathi) "तुमचे मुख्य कौशल्य / काम निवडा:" else "Select Your Primary Trade:",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF059669)
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                ExposedDropdownMenuBox(
-                                    expanded = skillDropdownExpanded,
-                                    onExpandedChange = { skillDropdownExpanded = it }
-                                ) {
-                                    OutlinedTextField(
-                                        value = workerSkill,
-                                        onValueChange = {},
-                                        readOnly = true,
-                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = skillDropdownExpanded) },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                                            .testTag("worker_skill_dropdown")
-                                    )
-                                    ExposedDropdownMenu(
-                                        expanded = skillDropdownExpanded,
-                                        onDismissRequest = { skillDropdownExpanded = false }
-                                    ) {
-                                        availableSkills.forEach { skill ->
-                                            DropdownMenuItem(
-                                                text = { Text(skill) },
-                                                onClick = {
-                                                    workerSkill = skill
-                                                    skillDropdownExpanded = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Role 3: Cooperative Admin
-                    ServiceRoleCard(
-                        role = Role.COOPERATIVE_ADMIN,
-                        isSelected = selectedRole == Role.COOPERATIVE_ADMIN,
-                        title = if (isMarathi) "सहकारी संस्था समिती (Cooperative Admin)" else "Cooperative Committee Admin",
-                        tagline = if (isMarathi) "एस्क्रो मंजुरी, वाद निवारण आणि पारदर्शक वाटप" else "Escrow releases, dispute resolution & equitable dispatch",
-                        icon = Icons.Default.AdminPanelSettings,
-                        badge = if (isMarathi) "समिती प्रशासन" else "Board Governance",
-                        accentColor = Color(0xFF7C3AED),
-                        onClick = { selectedRole = Role.COOPERATIVE_ADMIN },
-                        tag = "role_choice_admin"
-                    )
-                }
-            }
-
-            // SUBMIT & PROCEED BUTTON
-            item {
-                Spacer(modifier = Modifier.height(4.dp))
-                Button(
+                // Language Toggle
+                OutlinedButton(
                     onClick = {
-                        if (onLoginSuccessWithDetails != null) {
-                            onLoginSuccessWithDetails(
-                                selectedRole,
-                                nameInput,
-                                phoneInput,
-                                localityInput,
-                                workerSkill
-                            )
-                        } else {
-                            CoopRepository.loginUser(
-                                name = nameInput,
-                                phone = phoneInput,
-                                locality = localityInput,
-                                role = selectedRole,
-                                workerSkill = workerSkill
-                            )
-                            onLoginSuccess(selectedRole)
-                        }
+                        val nextLang = if (isMarathi) AppLanguage.ENGLISH else AppLanguage.MARATHI
+                        CoopRepository.setLanguage(nextLang)
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("startup_login_submit_button"),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    shape = RoundedCornerShape(20.dp),
+                    contentPadding = ButtonDefaults.TextButtonContentPadding,
+                    modifier = Modifier.testTag("language_toggle_startup")
                 ) {
-                    Text(
-                        text = if (isMarathi) "लॉगिन करा आणि पोर्टल सुरू करा" else "Log In & Enter Cooperative Portal",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        imageVector = Icons.Default.Translate,
+                        contentDescription = "Language",
+                        modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                    Text(
+                        text = if (isMarathi) "मराठी" else "English",
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Progress Bar
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Body Content by Step
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                when (currentStep) {
+                    1 -> Step1Welcome(
+                        isMarathi = isMarathi,
+                        onGetStarted = { currentStep = 2 },
+                        onQuickRoleSelect = { presetRole ->
+                            when (presetRole) {
+                                Role.CUSTOMER -> {
+                                    nameInput = "Ramesh Patil"
+                                    phoneInput = "9845012345"
+                                    areaInput = "Indiranagar"
+                                    cityInput = "Bangalore"
+                                    landmarkInput = "100ft Road"
+                                    selectedRole = Role.CUSTOMER
+                                }
+                                Role.WORKER -> {
+                                    nameInput = "Sunil Kumar"
+                                    phoneInput = "9845122331"
+                                    areaInput = "Koramangala"
+                                    cityInput = "Bangalore"
+                                    landmarkInput = "Sony World Signal"
+                                    selectedRole = Role.WORKER
+                                    workerSkill = "Electrician"
+                                }
+                                Role.COOPERATIVE_ADMIN -> {
+                                    nameInput = "Dr. Shrikant Deshmukh"
+                                    phoneInput = "9845999888"
+                                    areaInput = "Malleshwaram"
+                                    cityInput = "Bangalore"
+                                    landmarkInput = "Cooperative Central Office"
+                                    selectedRole = Role.COOPERATIVE_ADMIN
+                                    adminPosition = "Committee Secretary"
+                                }
+                            }
+                            currentRoleCompleteOrContinue(presetRole) { completeOnboarding() }
+                        }
+                    )
+                    2 -> Step2PersonalDetails(
+                        name = nameInput,
+                        phone = phoneInput,
+                        isMarathi = isMarathi,
+                        onNameChange = { nameInput = it },
+                        onPhoneChange = { phoneInput = it },
+                        onNext = { currentStep = 3 }
+                    )
+                    3 -> Step3Address(
+                        area = areaInput,
+                        city = cityInput,
+                        landmark = landmarkInput,
+                        isMarathi = isMarathi,
+                        onAreaChange = { areaInput = it },
+                        onCityChange = { cityInput = it },
+                        onLandmarkChange = { landmarkInput = it },
+                        onNext = { currentStep = 4 }
+                    )
+                    4 -> Step4RoleSelection(
+                        selectedRole = selectedRole,
+                        isMarathi = isMarathi,
+                        onRoleSelected = { selectedRole = it },
+                        onNext = { currentStep = 5 }
+                    )
+                    5 -> Step5RoleDetails(
+                        role = selectedRole,
+                        isMarathi = isMarathi,
+                        workerSkill = workerSkill,
+                        availableSkills = availableSkills,
+                        experienceYears = workerExperienceYears,
+                        workerBranch = workerBranch,
+                        availableBranches = availableBranches,
+                        adminPosition = adminPosition,
+                        adminPositions = adminPositions,
+                        customerInterest = customerInterest,
+                        customerServices = customerServices,
+                        onSkillChange = { workerSkill = it },
+                        onExperienceChange = { workerExperienceYears = it },
+                        onBranchChange = { workerBranch = it },
+                        onAdminPositionChange = { adminPosition = it },
+                        onCustomerInterestChange = { customerInterest = it },
+                        onNext = { currentStep = 6 }
+                    )
+                    6 -> Step6Confirmation(
+                        name = nameInput,
+                        phone = phoneInput,
+                        area = areaInput,
+                        city = cityInput,
+                        landmark = landmarkInput,
+                        role = selectedRole,
+                        workerSkill = workerSkill,
+                        experienceYears = workerExperienceYears,
+                        branch = workerBranch,
+                        adminPosition = adminPosition,
+                        interest = customerInterest,
+                        isMarathi = isMarathi,
+                        onConfirm = { completeOnboarding() }
+                    )
+                }
             }
         }
     }
 }
 
+private fun currentRoleCompleteOrContinue(role: Role, onComplete: () -> Unit) {
+    onComplete()
+}
+
+// -------------------------------------------------------------------------------------
+// STEP 1: WELCOME
+// -------------------------------------------------------------------------------------
 @Composable
-private fun PresetChip(
-    label: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+private fun Step1Welcome(
+    isMarathi: Boolean,
+    onGetStarted: () -> Unit,
+    onQuickRoleSelect: (Role) -> Unit
 ) {
-    Surface(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-        border = BorderStroke(
-            1.dp,
-            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-        )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VerifiedUser,
+                    contentDescription = "Sahayog Logo",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(44.dp)
+                )
+            }
+        }
+
+        item {
+            Text(
+                text = if (isMarathi) "सहयोग सेवा सहकारी संघ" else "Sahayog Service Cooperative",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (isMarathi)
+                    "कामगारांची मालकी • हमीभाव किमान वेतन • क्रिप्टोग्राफिक एस्क्रो"
+                else
+                    "Worker-Owned • Guaranteed Wage Floors • Cryptographic Escrow",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (isMarathi) "१००% सुरक्षित एस्क्रो आणि पारदर्शक वेतन" else "100% Escrow Protection & Transparent Payouts",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Engineering, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (isMarathi) "किमान वेतन कायद्यानुसार हमी भाव (नो अंडरकटिंग)" else "Strict Minimum Wage Floor Guarantee (No Undercutting)",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (isMarathi) "स्थानिक सुरक्षित डेटा - संपूर्ण ऑफलाइन सहकार्य" else "Offline-First Data Storage • No Cloud Dependencies",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Button(
+                onClick = onGetStarted,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .testTag("onboarding_get_started_btn"),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = if (isMarathi) "सुरुवात करा (६ पायऱ्या)" else "Get Started (Setup Profile)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+            }
+        }
+
+        item {
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text(
+                text = if (isMarathi) "किंवा १-क्लिक जलद चाचणी निवडा (परीक्षकांसाठी):" else "Or Quick-Select Demo Profile (For Evaluators):",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { onQuickRoleSelect(Role.CUSTOMER) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("quick_customer_btn"),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(if (isMarathi) "ग्राहक\n(Customer)" else "Customer\n(Ramesh)", textAlign = TextAlign.Center, fontSize = 12.sp)
+                }
+                OutlinedButton(
+                    onClick = { onQuickRoleSelect(Role.WORKER) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("quick_worker_btn"),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(if (isMarathi) "कामगार\n(Worker)" else "Worker\n(Sunil)", textAlign = TextAlign.Center, fontSize = 12.sp)
+                }
+                OutlinedButton(
+                    onClick = { onQuickRoleSelect(Role.COOPERATIVE_ADMIN) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("quick_admin_btn"),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(if (isMarathi) "व्यवस्थापक\n(Admin)" else "Admin\n(Board)", textAlign = TextAlign.Center, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// STEP 2: PERSONAL DETAILS
+// -------------------------------------------------------------------------------------
+@Composable
+private fun Step2PersonalDetails(
+    name: String,
+    phone: String,
+    isMarathi: Boolean,
+    onNameChange: (String) -> Unit,
+    onPhoneChange: (String) -> Unit,
+    onNext: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = label,
-            modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
+            text = if (isMarathi) "आपली वैयक्तिक माहिती प्रविष्ट करा" else "Personal Details",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
         )
+        Text(
+            text = if (isMarathi)
+                "सहकारी संघामध्ये आपली ओळख नोंदवण्यासाठी संपूर्ण नाव आणि १०-अंकी मोबाईल नंबर द्या."
+            else
+                "Provide your full name and 10-digit mobile number for cooperative member registration.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = onNameChange,
+            label = { Text(if (isMarathi) "संपूर्ण नाव (Full Name)" else "Full Name") },
+            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("onboarding_name_input")
+        )
+
+        OutlinedTextField(
+            value = phone,
+            onValueChange = { if (it.length <= 10 && it.all { char -> char.isDigit() }) onPhoneChange(it) },
+            label = { Text(if (isMarathi) "मोबाईल नंबर (१० अंक)" else "Mobile Number (10 digits)") },
+            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+            prefix = { Text("+91 ") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("onboarding_phone_input")
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = onNext,
+            enabled = name.isNotBlank() && phone.length >= 8,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .testTag("step2_next_btn"),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(if (isMarathi) "पुढील पायरी: पत्ता" else "Next: Address")
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// STEP 3: ADDRESS
+// -------------------------------------------------------------------------------------
+@Composable
+private fun Step3Address(
+    area: String,
+    city: String,
+    landmark: String,
+    isMarathi: Boolean,
+    onAreaChange: (String) -> Unit,
+    onCityChange: (String) -> Unit,
+    onLandmarkChange: (String) -> Unit,
+    onNext: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = if (isMarathi) "आपला पत्ता आणि परिसर" else "Address & Locality",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = if (isMarathi)
+                "स्थानिक कामगारांशी संपर्क साधण्यासाठी आणि सेवा विनंत्यांसाठी आपला परिसर निश्चित करा."
+            else
+                "Specify your area/locality so services can be matched and dispatched with minimal travel time.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        OutlinedTextField(
+            value = area,
+            onValueChange = onAreaChange,
+            label = { Text(if (isMarathi) "परिसर / कॉलनी (Area / Locality)" else "Area / Locality (e.g. Indiranagar)") },
+            leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("onboarding_area_input")
+        )
+
+        OutlinedTextField(
+            value = city,
+            onValueChange = onCityChange,
+            label = { Text(if (isMarathi) "शहर / जिल्हा (City / District)" else "City / District (e.g. Bangalore)") },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("onboarding_city_input")
+        )
+
+        OutlinedTextField(
+            value = landmark,
+            onValueChange = onLandmarkChange,
+            label = { Text(if (isMarathi) "जवळची खूण (ऐच्छिक Landmark)" else "Optional Landmark (e.g. Near Metro)") },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("onboarding_landmark_input")
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = onNext,
+            enabled = area.isNotBlank() && city.isNotBlank(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .testTag("step3_next_btn"),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(if (isMarathi) "पुढील पायरी: भूमिका निवड" else "Next: Select Role")
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// STEP 4: ROLE SELECTION
+// -------------------------------------------------------------------------------------
+@Composable
+private fun Step4RoleSelection(
+    selectedRole: Role,
+    isMarathi: Boolean,
+    onRoleSelected: (Role) -> Unit,
+    onNext: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = if (isMarathi) "सहकार्यात आपली भूमिका निवडा" else "Select Your Cooperative Role",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = if (isMarathi)
+                "प्रत्येक भूमिकेसाठी स्वतंत्र, वेगळा डॅशबोर्ड उपलब्ध आहे. ही एकच निवड आपल्या अनुभवाची रचना ठरवते."
+            else
+                "Each role provides a strictly isolated dashboard. This choice determines your application experience.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        // Customer Card
+        RoleCard(
+            title = if (isMarathi) "ग्राहक (Customer)" else "Customer",
+            subtitle = if (isMarathi)
+                "घरगुती सेवांसाठी हमीभावानुसार कामगार बुक करा. १००% एस्क्रो सुरक्षा."
+            else
+                "Book verified household services with wage-floor protection & secure local escrow.",
+            icon = Icons.Default.Home,
+            isSelected = selectedRole == Role.CUSTOMER,
+            testTag = "role_card_customer",
+            onClick = { onRoleSelected(Role.CUSTOMER) }
+        )
+
+        // Worker Card
+        RoleCard(
+            title = if (isMarathi) "कामगार (Worker)" else "Worker",
+            subtitle = if (isMarathi)
+                "काम स्वीकारा, कामाचा पुरावा (GPS + फोटो) जोडा आणि थेट हमी वेतनाचा हक्क मिळवा."
+            else
+                "Accept jobs, submit tamper-proof GPS & photo proof, and earn guaranteed floor wages.",
+            icon = Icons.Default.Engineering,
+            isSelected = selectedRole == Role.WORKER,
+            testTag = "role_card_worker",
+            onClick = { onRoleSelected(Role.WORKER) }
+        )
+
+        // Admin Card
+        RoleCard(
+            title = if (isMarathi) "सहकार व्यवस्थापक (Cooperative Admin)" else "Cooperative Admin",
+            subtitle = if (isMarathi)
+                "तक्रार निवारण, एस्क्रो रिलीज, लाभांश वाटप आणि समन्यायी काम वाटप (Fair Dispatch) तपासा."
+            else
+                "Oversee governance, resolve disputes, release escrow, and monitor fair dispatch.",
+            icon = Icons.Default.AdminPanelSettings,
+            isSelected = selectedRole == Role.COOPERATIVE_ADMIN,
+            testTag = "role_card_admin",
+            onClick = { onRoleSelected(Role.COOPERATIVE_ADMIN) }
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = onNext,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .testTag("step4_next_btn"),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(if (isMarathi) "पुढील पायरी: भूमिकेनुसार माहिती" else "Next: Role-Specific Details")
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+        }
     }
 }
 
 @Composable
-private fun ServiceRoleCard(
-    role: Role,
-    isSelected: Boolean,
+private fun RoleCard(
     title: String,
-    tagline: String,
+    subtitle: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    badge: String,
-    accentColor: Color,
-    onClick: () -> Unit,
-    tag: String
+    isSelected: Boolean,
+    testTag: String,
+    onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .testTag(tag),
-        shape = RoundedCornerShape(12.dp),
+            .testTag(testTag),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) accentColor.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+            containerColor = if (isSelected)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+            else
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),
         border = BorderStroke(
-            if (isSelected) 2.dp else 1.dp,
-            if (isSelected) accentColor else MaterialTheme.colorScheme.outlineVariant
+            width = if (isSelected) 2.dp else 1.dp,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
         )
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.15f)),
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(22.dp)
+                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
+            Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// STEP 5: ROLE-SPECIFIC INFORMATION
+// -------------------------------------------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun Step5RoleDetails(
+    role: Role,
+    isMarathi: Boolean,
+    workerSkill: String,
+    availableSkills: List<String>,
+    experienceYears: Int,
+    workerBranch: String,
+    availableBranches: List<String>,
+    adminPosition: String,
+    adminPositions: List<String>,
+    customerInterest: String,
+    customerServices: List<String>,
+    onSkillChange: (String) -> Unit,
+    onExperienceChange: (Int) -> Unit,
+    onBranchChange: (String) -> Unit,
+    onAdminPositionChange: (String) -> Unit,
+    onCustomerInterestChange: (String) -> Unit,
+    onNext: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = when (role) {
+                Role.CUSTOMER -> if (isMarathi) "ग्राहक पसंती" else "Customer Preferences"
+                Role.WORKER -> if (isMarathi) "कामगार कौशल्य व अनुभव" else "Worker Trade & Experience"
+                Role.COOPERATIVE_ADMIN -> if (isMarathi) "सहकारी शाखा व पद" else "Cooperative Branch & Role"
+            },
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        when (role) {
+            Role.CUSTOMER -> {
+                Text(
+                    text = if (isMarathi)
+                        "आपल्याला कोणत्या प्रकारच्या सेवांची प्रामुख्याने आवश्यकता आहे ते निवडा:"
+                    else
+                        "Select the service category you are most frequently interested in:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    customerServices.forEach { service ->
+                        val selected = customerInterest.equals(service, ignoreCase = true)
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onCustomerInterestChange(service) },
+                            label = { Text(service) },
+                            leadingIcon = if (selected) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        )
+                    }
+                }
+            }
+
+            Role.WORKER -> {
+                Text(
+                    text = if (isMarathi) "आपले मुख्य कौशल्य (Trade / Skill):" else "Select your primary trade / skill:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    availableSkills.forEach { skill ->
+                        val selected = workerSkill.equals(skill, ignoreCase = true)
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onSkillChange(skill) },
+                            label = { Text(skill) },
+                            leadingIcon = if (selected) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = if (isMarathi) "कामाचा अनुभव: $experienceYears वर्षे" else "Experience: $experienceYears years",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { if (experienceYears > 1) onExperienceChange(experienceYears - 1) },
+                        shape = CircleShape,
+                        modifier = Modifier.size(40.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) {
+                        Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Text(
+                        text = "$experienceYears",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    OutlinedButton(
+                        onClick = { if (experienceYears < 30) onExperienceChange(experienceYears + 1) },
+                        shape = CircleShape,
+                        modifier = Modifier.size(40.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) {
+                        Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Role.COOPERATIVE_ADMIN -> {
+                Text(
+                    text = if (isMarathi) "शाखा निवडा:" else "Cooperative Branch:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+
+                availableBranches.forEach { branch ->
+                    val selected = workerBranch == branch
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onBranchChange(branch) }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (selected) Icons.Default.CheckCircle else Icons.Default.VerifiedUser,
+                            contentDescription = null,
+                            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = branch,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = if (isMarathi) "समिती पद / जबाबदारी:" else "Committee Role:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    adminPositions.forEach { pos ->
+                        val selected = adminPosition == pos
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onAdminPositionChange(pos) },
+                            label = { Text(pos) },
+                            leadingIcon = if (selected) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = onNext,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .testTag("step5_next_btn"),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(if (isMarathi) "पुढील पायरी: पडताळणी व पुष्टी" else "Next: Summary & Confirmation")
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// STEP 6: CONFIRMATION & REVIEW
+// -------------------------------------------------------------------------------------
+@Composable
+private fun Step6Confirmation(
+    name: String,
+    phone: String,
+    area: String,
+    city: String,
+    landmark: String,
+    role: Role,
+    workerSkill: String,
+    experienceYears: Int,
+    branch: String,
+    adminPosition: String,
+    interest: String,
+    isMarathi: Boolean,
+    onConfirm: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = if (isMarathi) "माहिती पडताळा आणि पुष्टी करा" else "Review & Confirm Profile",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = if (isMarathi) "निवडलेली भूमिका" else "Selected Role",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Selected",
-                            tint = accentColor,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    Text(
+                        text = when (role) {
+                            Role.CUSTOMER -> if (isMarathi) "ग्राहक (Customer)" else "Customer"
+                            Role.WORKER -> if (isMarathi) "कामगार (Worker)" else "Worker"
+                            Role.COOPERATIVE_ADMIN -> if (isMarathi) "व्यवस्थापक (Admin)" else "Cooperative Admin"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                HorizontalDivider()
+
+                ReviewRow(label = if (isMarathi) "नाव" else "Full Name", value = name)
+                ReviewRow(label = if (isMarathi) "मोबाईल" else "Mobile", value = "+91 $phone")
+                ReviewRow(
+                    label = if (isMarathi) "पत्ता" else "Locality",
+                    value = if (landmark.isNotBlank()) "$area, $city (Near $landmark)" else "$area, $city"
+                )
+
+                when (role) {
+                    Role.CUSTOMER -> {
+                        ReviewRow(label = if (isMarathi) "प्राधान्य सेवा" else "Preferred Service", value = interest)
+                    }
+                    Role.WORKER -> {
+                        ReviewRow(label = if (isMarathi) "कौशल्य" else "Skill / Trade", value = workerSkill)
+                        ReviewRow(label = if (isMarathi) "अनुभव" else "Experience", value = "$experienceYears years")
+                    }
+                    Role.COOPERATIVE_ADMIN -> {
+                        ReviewRow(label = if (isMarathi) "शाखा" else "Branch", value = branch)
+                        ReviewRow(label = if (isMarathi) "पद" else "Position", value = adminPosition)
                     }
                 }
-                Spacer(modifier = Modifier.height(2.dp))
+            }
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            ),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = tagline,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "• $badge",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = accentColor
+                    text = if (isMarathi)
+                        "स्थानिक डेटास्टोअरमध्ये जतन केले जाईल. ॲप पुन्हा सुरू केल्यावर थेट डॅशबोर्ड उघडेल."
+                    else
+                        "Persisted locally in DataStore. Onboarding will not appear again on app restart.",
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = onConfirm,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .testTag("onboarding_confirm_btn"),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Default.CheckCircle, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (isMarathi) "पुष्टी करा आणि सहकार्यात प्रवेश करा" else "Confirm & Enter Cooperative",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReviewRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
     }
 }

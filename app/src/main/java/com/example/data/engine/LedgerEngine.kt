@@ -109,19 +109,38 @@ object LedgerEngine {
     )
 
     /**
+     * Orders a set of ledger entries from Genesis to latest block by following cryptographic hash links.
+     */
+    fun orderChain(entries: List<LedgerEntry>): List<LedgerEntry> {
+        if (entries.size <= 1) return entries
+        val byPrevHash = entries.associateBy { it.previousHash }
+        val ordered = mutableListOf<LedgerEntry>()
+        var currentPrev = GENESIS_HASH
+
+        while (true) {
+            val next = byPrevHash[currentPrev] ?: break
+            ordered.add(next)
+            currentPrev = next.currentHash
+        }
+
+        return if (ordered.size == entries.size) ordered else entries.sortedBy { it.timestamp }
+    }
+
+    /**
      * Verifies the complete hash chain of a worker from Genesis to latest block.
      */
     fun verifyChain(entries: List<LedgerEntry>): ChainVerificationResult {
         if (entries.isEmpty()) {
             return ChainVerificationResult(true, 0, null, "No entries in ledger. Chain is empty.")
         }
+        val chain = orderChain(entries)
         var expectedPrev = GENESIS_HASH
-        for (i in entries.indices) {
-            val entry = entries[i]
+        for (i in chain.indices) {
+            val entry = chain[i]
             if (entry.previousHash != expectedPrev) {
                 return ChainVerificationResult(
                     isChainValid = false,
-                    totalBlocks = entries.size,
+                    totalBlocks = chain.size,
                     brokenAtIndex = i,
                     message = "Chain broken at index $i: expected previous hash $expectedPrev but got ${entry.previousHash}"
                 )
@@ -130,7 +149,7 @@ object LedgerEngine {
             if (!singleResult.isValid) {
                 return ChainVerificationResult(
                     isChainValid = false,
-                    totalBlocks = entries.size,
+                    totalBlocks = chain.size,
                     brokenAtIndex = i,
                     message = "Block at index $i has invalid hash!"
                 )
@@ -139,9 +158,9 @@ object LedgerEngine {
         }
         return ChainVerificationResult(
             isChainValid = true,
-            totalBlocks = entries.size,
+            totalBlocks = chain.size,
             brokenAtIndex = null,
-            message = "All ${entries.size} blocks cryptographically verified intact from Genesis."
+            message = "All ${chain.size} blocks cryptographically verified intact from Genesis."
         )
     }
 }

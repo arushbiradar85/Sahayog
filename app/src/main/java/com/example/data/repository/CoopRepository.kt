@@ -65,7 +65,14 @@ object CoopRepository {
 
     fun resetToSeedData() {
         val (initJobs, initLedger) = SeedData.createInitialJobsAndLedger()
-        _workers.value = SeedData.workers
+        // Strictly synchronize worker total earnings and completed jobs with cryptographic ledger
+        _workers.value = SeedData.workers.map { worker ->
+            val workerLedger = initLedger.filter { it.workerId == worker.id }
+            worker.copy(
+                totalEarningsInPaise = workerLedger.sumOf { it.workerWageInPaise },
+                completedJobs = workerLedger.size
+            )
+        }
         _customers.value = SeedData.customers
         _cooperatives.value = SeedData.cooperatives
         _jobs.value = initJobs
@@ -144,14 +151,39 @@ object CoopRepository {
     fun loginUser(
         name: String,
         phone: String,
-        locality: String,
+        locality: String = "Indiranagar, Bangalore",
         role: Role,
-        workerSkill: String = "Electrician"
+        workerSkill: String = "Electrician",
+        areaLocality: String = "Indiranagar",
+        cityDistrict: String = "Bangalore",
+        landmark: String = "",
+        experienceYears: Int = 4,
+        cooperativeBranch: String = "Bangalore Urban Workers Cooperative",
+        adminPosition: String = "Committee Secretary",
+        customerServiceInterest: String = "Floor Cleaning"
     ) {
-        UserPreferences.saveLogin(name, phone, locality, role, workerSkill)
+        UserPreferences.saveLogin(
+            name = name,
+            phone = phone,
+            areaLocality = areaLocality,
+            cityDistrict = cityDistrict,
+            landmark = landmark,
+            role = role,
+            workerSkill = workerSkill,
+            experienceYears = experienceYears,
+            cooperativeBranch = cooperativeBranch,
+            adminPosition = adminPosition,
+            customerServiceInterest = customerServiceInterest
+        )
         val profile = UserPreferences.getUserProfile()
         if (profile != null) {
             applyUserProfile(profile)
+        }
+    }
+
+    fun addExternalJob(job: Job) {
+        _jobs.update { list ->
+            if (list.none { it.id == job.id }) listOf(job) + list else list
         }
     }
 
@@ -223,13 +255,17 @@ object CoopRepository {
         durationMinutes: Int,
         priceInPaise: Long,
         title: String = "$skill Service",
-        description: String = ""
+        description: String = "",
+        date: String = "Today",
+        preferredTime: String = "2:00 PM",
+        instructions: String = ""
     ): Result<Job> {
         val validation = WageEngine.validatePrice(skill, durationMinutes, priceInPaise)
         if (!validation.isValid) {
             return Result.failure(IllegalArgumentException(validation.reasonMessage))
         }
 
+        val formattedDateTime = if (dateTime.isNotBlank()) dateTime else "$date, $preferredTime"
         val newJob = Job(
             id = "job_" + UUID.randomUUID().toString().take(8),
             customerId = _selectedCustomerId.value,
@@ -237,13 +273,16 @@ object CoopRepository {
             cooperativeId = _selectedCoopId.value,
             skill = skill,
             location = location,
-            dateTime = dateTime,
+            dateTime = formattedDateTime,
             durationMinutes = durationMinutes,
             priceInPaise = priceInPaise,
             escrowAmountInPaise = priceInPaise, // Full customer price held in local escrow
             status = JobStatus.PENDING,
             title = title,
-            description = description
+            description = if (instructions.isNotBlank()) instructions else description,
+            createdAtTimestamp = System.currentTimeMillis(),
+            preferredTime = preferredTime,
+            instructions = instructions
         )
 
         _jobs.update { listOf(newJob) + it }
@@ -461,6 +500,74 @@ object CoopRepository {
         _cooperatives.update { list ->
             list.map { if (it.id == coopId) it.copy(adminFeePercent = clamped) else it }
         }
+    }
+
+    /**
+     * Cooperative Governance: Democratic Surplus & Patronage Dividend Distribution.
+     * Distributes surplus from the cooperative welfare fund equally among all verified members,
+     * maintaining hash-chained ledger consistency and updating member earnings.
+     */
+    fun distributeSurplus(coopId: String, distributionAmountPaise: Long): Result<Long> {
+        val coop = _cooperatives.value.firstOrNull { it.id == coopId }
+            ?: return Result.failure(IllegalArgumentException("Cooperative not found"))
+
+        if (distributionAmountPaise <= 0L) {
+            return Result.failure(IllegalArgumentException("Distribution amount must be greater than zero"))
+        }
+
+        if (distributionAmountPaise > coop.welfareFundInPaise) {
+            return Result.failure(IllegalArgumentException("Insufficient welfare fund balance for distribution"))
+        }
+
+        val verifiedWorkers = _workers.value.filter { it.cooperativeId == coopId && it.verified }
+        if (verifiedWorkers.isEmpty()) {
+            return Result.failure(IllegalStateException("No verified members available to receive dividend"))
+        }
+
+        val dividendPerMemberPaise = distributionAmountPaise / verifiedWorkers.size
+        val actualTotalDistributed = dividendPerMemberPaise * verifiedWorkers.size
+        val timestamp = System.currentTimeMillis()
+
+        // 1. Deduct distributed surplus from cooperative welfare fund
+        _cooperatives.update { list ->
+            list.map {
+                if (it.id == coopId) {
+                    it.copy(welfareFundInPaise = it.welfareFundInPaise - actualTotalDistributed)
+                } else it
+            }
+        }
+
+        // 2. Add chained ledger dividend entry for each verified worker
+        val newLedgerEntries = mutableListOf<LedgerEntry>()
+        val currentLedger = _ledger.value
+
+        for (worker in verifiedWorkers) {
+            val workerLedger = currentLedger.filter { it.workerId == worker.id }.sortedBy { it.timestamp }
+            val prevHash = workerLedger.lastOrNull()?.currentHash ?: LedgerEngine.GENESIS_HASH
+            val entry = LedgerEngine.createEntry(
+                id = "div_${UUID.randomUUID().toString().take(8)}",
+                workerId = worker.id,
+                jobId = "SURPLUS_DIVIDEND",
+                workerWageInPaise = dividendPerMemberPaise,
+                adminFeeInPaise = 0L,
+                welfareInPaise = 0L,
+                timestamp = timestamp,
+                previousHash = prevHash
+            )
+            newLedgerEntries.add(entry)
+        }
+        _ledger.update { it + newLedgerEntries }
+
+        // 3. Update worker earnings
+        _workers.update { list ->
+            list.map { worker ->
+                if (worker.cooperativeId == coopId && worker.verified) {
+                    worker.copy(totalEarningsInPaise = worker.totalEarningsInPaise + dividendPerMemberPaise)
+                } else worker
+            }
+        }
+
+        return Result.success(actualTotalDistributed)
     }
 
     /**

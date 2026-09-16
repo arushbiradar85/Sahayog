@@ -151,6 +151,7 @@ fun FairnessScreen(
                         subtitle = "Highest rating prioritized",
                         gini = ratingGreedy.giniCoefficient,
                         top20Share = ratingGreedy.top20SharePercent,
+                        avgWaitMinutes = ratingGreedy.averageWaitTimeMinutes,
                         assignedCount = ratingGreedy.assignments.size,
                         dispatchedPaise = ratingGreedy.totalDispatchedPaise,
                         accentColor = Color(0xFFDC2626),
@@ -163,6 +164,7 @@ fun FairnessScreen(
                         subtitle = "Earnings-equalized dispatch",
                         gini = equitable.giniCoefficient,
                         top20Share = equitable.top20SharePercent,
+                        avgWaitMinutes = equitable.averageWaitTimeMinutes,
                         assignedCount = equitable.assignments.size,
                         dispatchedPaise = equitable.totalDispatchedPaise,
                         accentColor = Color(0xFF059669),
@@ -256,6 +258,7 @@ private fun AlgorithmComparisonCard(
     subtitle: String,
     gini: Double,
     top20Share: Double,
+    avgWaitMinutes: Double,
     assignedCount: Int,
     dispatchedPaise: Long,
     accentColor: Color,
@@ -305,10 +308,27 @@ private fun AlgorithmComparisonCard(
             // Top 20%
             Text("Top 20% Wage Share", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
             Text(
-                text = "${String.format(Locale.US, "%.1f", top20Share * 100)}%",
+                text = "${String.format(Locale.US, "%.1f", top20Share)}%",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Comparable Waiting-Time Metric
+            Text("Avg Queue Wait Time", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "${String.format(Locale.US, "%.0f", avgWaitMinutes)} min",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isWinner) accentColor else MaterialTheme.colorScheme.onSurface
+                )
+                if (isWinner && avgWaitMinutes < 60) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(Icons.Default.CheckCircle, contentDescription = "Faster dispatch", tint = accentColor, modifier = Modifier.size(14.dp))
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
