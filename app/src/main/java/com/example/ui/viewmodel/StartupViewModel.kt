@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.datastore.AppDataStore
 import com.example.data.model.Role
+import com.example.data.preferences.UserProfile
+import com.example.data.preferences.UserPreferences
 import com.example.data.repository.CoopRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,7 +31,17 @@ class StartupViewModel(application: Application) : AndroidViewModel(application)
     fun checkPersistedUser() {
         viewModelScope.launch {
             val context = getApplication<Application>()
-            val profile = AppDataStore.getUserProfile(context)
+            UserPreferences.init(context)
+            val storeProfile: UserProfile? = AppDataStore.getUserProfile(context)
+            val prefsProfile: UserProfile? = UserPreferences.getUserProfile()
+            val profile: UserProfile? = if (storeProfile != null && storeProfile.isLoggedIn) {
+                storeProfile
+            } else if (prefsProfile != null && prefsProfile.isLoggedIn) {
+                prefsProfile
+            } else {
+                null
+            }
+
             if (profile != null && profile.isLoggedIn) {
                 CoopRepository.applyUserProfile(profile)
                 _uiState.value = StartupUiState.Authenticated(profile.role, profile.name)

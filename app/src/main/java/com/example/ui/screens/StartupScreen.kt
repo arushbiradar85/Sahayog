@@ -127,7 +127,7 @@ fun StartupScreen(
 
     fun completeOnboarding() {
         val fullLocality = if (landmarkInput.isNotBlank()) "$areaInput, $cityInput (Near $landmarkInput)" else "$areaInput, $cityInput"
-        val chosenSkills = if (selectedRole == Role.WORKER) workerSkills.ifEmpty { listOf("Electrician") } else listOf("Electrician")
+        val chosenSkills = if (selectedRole == Role.WORKER) workerSkills.ifEmpty { listOf("Electrician") } else emptyList()
         val chosenInterests = if (selectedRole == Role.CUSTOMER) customerInterests.ifEmpty { listOf("Floor Cleaning") } else listOf("Floor Cleaning")
 
         CoopRepository.loginUser(
@@ -143,7 +143,18 @@ fun StartupScreen(
             customerServiceInterests = chosenInterests
         )
 
-        onLoginSuccess(selectedRole)
+        if (onLoginSuccessWithDetails != null) {
+            val primarySkill = if (selectedRole == Role.WORKER) chosenSkills.firstOrNull() ?: "Electrician" else ""
+            onLoginSuccessWithDetails(
+                selectedRole,
+                nameInput,
+                phoneInput,
+                fullLocality,
+                primarySkill
+            )
+        } else {
+            onLoginSuccess(selectedRole)
+        }
     }
 
     Surface(

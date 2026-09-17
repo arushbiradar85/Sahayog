@@ -267,18 +267,14 @@ fun CustomerScreen(
                     onFilterChange = { bookingFilter = it },
                     isMarathi = isMarathi,
                     onRaiseDispute = { disputeJobTarget = it },
-                    onViewReceipt = { showReceiptJob = it },
-                    onSimulateAccept = { job ->
-                        TwoDeviceSyncManager.simulateWorkerAcceptanceForJob(job.id, 500)
-                        Toast.makeText(context, "Simulating worker acceptance...", Toast.LENGTH_SHORT).show()
-                    }
+                    onViewReceipt = { showReceiptJob = it }
                 )
                 2 -> CustomerProfileTab(
                     activeCustomer = activeCustomer,
                     userProfile = userProfile,
                     isMarathi = isMarathi,
                     onToggleLanguage = { CoopRepository.toggleLanguage() },
-                    onChangeRole = { CoopRepository.logoutUser() },
+                    onChangeRole = { CoopRepository.switchRoleTo(Role.WORKER) },
                     onResetDemo = { showResetConfirmDialog = true }
                 )
             }
@@ -321,10 +317,6 @@ fun CustomerScreen(
                             pricePaise,
                             location
                         )
-                        // If demo simulation enabled, trigger auto-accept after 3 seconds
-                        if (TwoDeviceSyncManager.demoSimulationEnabled.value) {
-                            TwoDeviceSyncManager.simulateWorkerAcceptanceForJob(createdJob.id, 3000)
-                        }
                     }
                     selectedNavIndex = 1 // Switch to My Requests
                     Toast.makeText(context, "Request created! Payment held safely in escrow.", Toast.LENGTH_LONG).show()
@@ -583,8 +575,7 @@ private fun CustomerRequestsTab(
     onFilterChange: (String) -> Unit,
     isMarathi: Boolean,
     onRaiseDispute: (Job) -> Unit,
-    onViewReceipt: (Job) -> Unit,
-    onSimulateAccept: (Job) -> Unit
+    onViewReceipt: (Job) -> Unit
 ) {
     val filteredJobs = when (activeFilter) {
         "OPEN" -> customerJobs.filter { it.status == JobStatus.PENDING }
@@ -665,8 +656,7 @@ private fun CustomerRequestsTab(
                         job = job,
                         isMarathi = isMarathi,
                         onRaiseDispute = { onRaiseDispute(job) },
-                        onViewReceipt = { onViewReceipt(job) },
-                        onSimulateAccept = { onSimulateAccept(job) }
+                        onViewReceipt = { onViewReceipt(job) }
                     )
                 }
             }
@@ -941,8 +931,7 @@ private fun CustomerJobCardDetailed(
     job: Job,
     isMarathi: Boolean,
     onRaiseDispute: () -> Unit,
-    onViewReceipt: () -> Unit,
-    onSimulateAccept: () -> Unit
+    onViewReceipt: () -> Unit
 ) {
     val sdf = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
     val formattedPostedTime = remember(job.createdAtTimestamp) {
@@ -1184,13 +1173,6 @@ private fun CustomerJobCardDetailed(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                        }
-
-                        TextButton(
-                            onClick = onSimulateAccept,
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                        ) {
-                            Text("Simulate Accept", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

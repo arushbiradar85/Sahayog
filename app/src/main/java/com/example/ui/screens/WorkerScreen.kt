@@ -87,6 +87,7 @@ import com.example.data.engine.WageEngine
 import com.example.data.model.Job
 import com.example.data.model.JobStatus
 import com.example.data.model.LedgerEntry
+import com.example.data.model.Role
 import com.example.data.model.Worker
 import com.example.data.preferences.UserProfile
 import com.example.data.repository.CoopRepository
@@ -264,7 +265,7 @@ fun WorkerScreen(
                         repository.updateWorkerSkill(newSkill)
                         Toast.makeText(context, "Trade updated to $newSkill", Toast.LENGTH_SHORT).show()
                     },
-                    onChangeRole = { CoopRepository.logoutUser() },
+                    onChangeRole = { CoopRepository.switchRoleTo(Role.CUSTOMER) },
                     onResetDemo = { showResetConfirmDialog = true }
                 )
             }

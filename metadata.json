@@ -2,5 +2,7 @@
   "name": "Sahayog",
   "description": "Cooperative services marketplace with transparent hash-chained ledger, enforced wage floor, local escrow, and fair dispatch comparison",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -80,11 +80,17 @@ class MainActivity : ComponentActivity() {
         UserPreferences.init(applicationContext)
         CoopRepository.initPreferences(applicationContext)
 
-        intent?.getStringExtra(EXTRA_ROLE)?.let { roleName ->
+        val extraRole = intent?.getStringExtra(EXTRA_ROLE)
+        if (extraRole != null) {
             try {
-                val role = Role.valueOf(roleName)
+                val role = Role.valueOf(extraRole)
                 CoopRepository.setRole(role)
             } catch (e: Exception) {}
+        } else {
+            val savedRole = UserPreferences.getPersistedRole()
+            if (savedRole != null) {
+                CoopRepository.setRole(savedRole)
+            }
         }
 
         setContent {
@@ -107,6 +113,7 @@ fun SahayogMainApp() {
     var showFairnessScreen by remember { mutableStateOf(false) }
     var showResetConfirmationDialog by remember { mutableStateOf(false) }
     var showHubDialog by remember { mutableStateOf(false) }
+    var showRoleSwitchDialog by remember { mutableStateOf(false) }
 
     val isHubMode by TwoDeviceSyncManager.isHubMode.collectAsState()
     val localIp by TwoDeviceSyncManager.localIp.collectAsState()
@@ -114,13 +121,19 @@ fun SahayogMainApp() {
     val syncLog by TwoDeviceSyncManager.syncLog.collectAsState()
     val requestsCount by TwoDeviceSyncManager.requestsCount.collectAsState()
 
-    // If user has not chosen role / logged in, show minimal service-oriented StartupScreen
-    if (!hasSelectedRole) {
-        StartupScreen(
-            onLoginSuccess = { role ->
-                CoopRepository.selectInitialPersona(role)
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // If user has not logged in or has no valid profile, route directly to StartupActivity
+    if (!hasSelectedRole || activeProfile == null || !activeProfile!!.isLoggedIn) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            val intent = android.content.Intent(context, StartupActivity::class.java).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
             }
-        )
+            context.startActivity(intent)
+            if (context is android.app.Activity) {
+                context.finish()
+            }
+        }
         return
     }
 
@@ -245,9 +258,9 @@ fun SahayogMainApp() {
                         }
                     }
 
-                    // Switch Role / Logout Button
+                    // Switch Role Button
                     IconButton(
-                        onClick = { CoopRepository.logoutUser() },
+                        onClick = { showRoleSwitchDialog = true },
                         modifier = Modifier.testTag("switch_role_action_button")
                     ) {
                         Icon(
@@ -356,6 +369,55 @@ fun SahayogMainApp() {
             confirmButton = {
                 Button(onClick = { showHubDialog = false }) {
                     Text("Done")
+                }
+            }
+        )
+    }
+
+    // Role Switch Confirmation Dialog
+    if (showRoleSwitchDialog) {
+        val targetRole = if (currentRole == Role.CUSTOMER) Role.WORKER else Role.CUSTOMER
+        val targetRoleName = if (targetRole == Role.WORKER) {
+            if (isMarathi) "कामगार / सेवा प्रदाता" else "Provider / Worker"
+        } else {
+            if (isMarathi) "ग्राहक" else "Customer"
+        }
+        AlertDialog(
+            onDismissRequest = { showRoleSwitchDialog = false },
+            title = {
+                Text(
+                    text = if (isMarathi) "भूमिका बदला" else "Switch Dashboard Role",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = if (currentRole == Role.CUSTOMER) {
+                        if (isMarathi) "तुम्हाला कामगार / सेवा प्रदाता डॅशबोर्डवर जायचे आहे का? तुमचे ग्राहक प्रोफाइल आणि सेवा विनंत्या सुरक्षित राहतील."
+                        else "Switch to Provider / Worker dashboard? Your Customer profile and service requests will be preserved safely."
+                    } else {
+                        if (isMarathi) "तुम्हाला ग्राहक डॅशबोर्डवर जायचे आहे का? तुमचे कामगार प्रोफाइल आणि कामे सुरक्षित राहतील."
+                        else "Switch to Customer dashboard? Your Worker profile and bookings will be preserved safely."
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRoleSwitchDialog = false
+                        CoopRepository.switchRole()
+                    },
+                    modifier = Modifier.testTag("confirm_switch_role_btn")
+                ) {
+                    Text(if (isMarathi) "स्विच करा ($targetRoleName)" else "Switch to $targetRoleName")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showRoleSwitchDialog = false },
+                    modifier = Modifier.testTag("cancel_switch_role_btn")
+                ) {
+                    Text(if (isMarathi) "रद्द करा" else "Cancel")
                 }
             }
         )

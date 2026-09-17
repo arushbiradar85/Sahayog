@@ -78,11 +78,17 @@ object CoopRepository {
         _cooperatives.value = SeedData.cooperatives
         _jobs.value = initJobs
         _ledger.value = initLedger
-        _currentRole.value = Role.CUSTOMER
-        _hasSelectedRole.value = false
         _selectedWorkerId.value = "w_1"
         _selectedCustomerId.value = "cust_1"
         _selectedCoopId.value = "coop_blr"
+
+        val activeProfile = _activeUserProfile.value
+        if (activeProfile != null && activeProfile.isLoggedIn) {
+            applyUserProfile(activeProfile)
+        } else {
+            _currentRole.value = Role.CUSTOMER
+            _hasSelectedRole.value = false
+        }
     }
 
     fun setLanguage(language: AppLanguage) {
@@ -237,6 +243,21 @@ object CoopRepository {
         _hasSelectedRole.value = true
     }
 
+    fun switchRole() {
+        val target = if (_currentRole.value == Role.CUSTOMER) Role.WORKER else Role.CUSTOMER
+        switchRoleTo(target)
+    }
+
+    fun switchRoleTo(targetRole: Role) {
+        UserPreferences.switchRole(targetRole)
+        _currentRole.value = targetRole
+        _hasSelectedRole.value = true
+        val profile = UserPreferences.getUserProfile()
+        if (profile != null) {
+            applyUserProfile(profile)
+        }
+    }
+
     fun selectWorker(workerId: String) {
         _selectedWorkerId.value = workerId
     }
@@ -255,11 +276,21 @@ object CoopRepository {
     }
 
     fun getActiveWorker(): Worker {
+        if (_activeUserProfile.value?.role == Role.WORKER) {
+            val userWorker = _workers.value.firstOrNull { it.id == _selectedWorkerId.value }
+                ?: _workers.value.firstOrNull { it.phone == _activeUserProfile.value?.phone }
+            if (userWorker != null) return userWorker
+        }
         return _workers.value.firstOrNull { it.id == _selectedWorkerId.value }
             ?: _workers.value.first()
     }
 
     fun getActiveCustomer(): Customer {
+        if (_activeUserProfile.value?.role == Role.CUSTOMER) {
+            val userCustomer = _customers.value.firstOrNull { it.id == _selectedCustomerId.value }
+                ?: _customers.value.firstOrNull { it.phone == _activeUserProfile.value?.phone }
+            if (userCustomer != null) return userCustomer
+        }
         return _customers.value.firstOrNull { it.id == _selectedCustomerId.value }
             ?: _customers.value.first()
     }
@@ -303,7 +334,10 @@ object CoopRepository {
             description = if (instructions.isNotBlank()) instructions else description,
             createdAtTimestamp = System.currentTimeMillis(),
             preferredTime = preferredTime,
-            instructions = instructions
+            instructions = instructions,
+            customerName = _activeUserProfile.value?.name ?: "Customer",
+            customerPhone = _activeUserProfile.value?.phone ?: "+91 91234 56789",
+            requirements = listOf(ServiceRequirement(skill = skill, quantity = 1, assignedProviderIds = emptyList(), assignedProviderNames = emptyList()))
         )
 
         _jobs.update { listOf(newJob) + it }
@@ -323,7 +357,9 @@ object CoopRepository {
         title: String = "",
         instructions: String = ""
     ): Result<Job> {
-        val cleanReqs = requirements.filter { it.quantity > 0 }
+        val cleanReqs = requirements.filter { it.quantity > 0 }.map {
+            it.copy(assignedProviderIds = emptyList(), assignedProviderNames = emptyList())
+        }
         val primarySkill = if (cleanReqs.isNotEmpty()) {
             cleanReqs.joinToString(", ") { "${it.quantity}x ${it.skill}" }
         } else {
@@ -347,6 +383,8 @@ object CoopRepository {
             createdAtTimestamp = System.currentTimeMillis(),
             preferredTime = dateTime,
             instructions = instructions,
+            customerName = _activeUserProfile.value?.name ?: "Customer",
+            customerPhone = _activeUserProfile.value?.phone ?: "+91 91234 56789",
             requirements = cleanReqs
         )
 

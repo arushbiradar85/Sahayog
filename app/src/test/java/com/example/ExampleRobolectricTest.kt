@@ -10,6 +10,9 @@ import com.example.data.model.Role
 import com.example.data.model.ServiceRequirement
 import com.example.data.repository.CoopRepository
 import com.example.util.TwoDeviceSyncManager
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -567,5 +570,129 @@ class ExampleRobolectricTest {
         assertEquals(2, restored.requirements[1].quantity)
         assertEquals(listOf("w_2"), restored.requirements[1].assignedProviderIds)
         assertEquals(listOf("Ramesh Gardener"), restored.requirements[1].assignedProviderNames)
+    }
+
+    @Test
+    fun `bugfix 1 - fresh install starts with needs login and does not default to provider`() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        com.example.data.preferences.UserPreferences.init(app)
+        com.example.data.preferences.UserPreferences.clearLogin()
+        kotlinx.coroutines.runBlocking {
+            com.example.data.datastore.AppDataStore.clearUserProfile(app)
+        }
+
+        val viewModel = com.example.ui.viewmodel.StartupViewModel(app)
+        val start = System.currentTimeMillis()
+        while (viewModel.uiState.value is com.example.ui.viewmodel.StartupUiState.Loading && System.currentTimeMillis() - start < 3000) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+        }
+        val state = viewModel.uiState.value
+        assertEquals(com.example.ui.viewmodel.StartupUiState.NeedsLogin, state)
+    }
+
+    @Test
+    fun `bugfix 1 - customer onboarding restores only customer role and does not overwrite with provider`() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        com.example.data.preferences.UserPreferences.init(app)
+        com.example.data.preferences.UserPreferences.clearLogin()
+        kotlinx.coroutines.runBlocking {
+            com.example.data.datastore.AppDataStore.clearUserProfile(app)
+        }
+
+        // Customer completes onboarding
+        CoopRepository.initPreferences(app)
+        CoopRepository.loginUser(
+            name = "Aarti Sharma",
+            phone = "9811122233",
+            locality = "Koramangala, Bangalore",
+            role = Role.CUSTOMER
+        )
+
+        // Verify active role and profile
+        assertEquals(Role.CUSTOMER, CoopRepository.currentRole.value)
+        assertEquals("Aarti Sharma", CoopRepository.activeUserProfile.value?.name)
+        val customer = CoopRepository.getActiveCustomer()
+        assertEquals("Aarti Sharma", customer.name)
+
+        // Provider identity must not be overwritten or shared
+        val activeWorker = CoopRepository.getActiveWorker()
+        assertFalse("Customer name must not leak into worker profile", activeWorker.name == "Aarti Sharma")
+
+        // Simulate app reopening
+        val viewModel = com.example.ui.viewmodel.StartupViewModel(app)
+        val start = System.currentTimeMillis()
+        while (viewModel.uiState.value is com.example.ui.viewmodel.StartupUiState.Loading && System.currentTimeMillis() - start < 3000) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+        }
+        val restoredState = viewModel.uiState.value
+        assertTrue("Expected Authenticated state, got $restoredState", restoredState is com.example.ui.viewmodel.StartupUiState.Authenticated)
+        val auth = restoredState as com.example.ui.viewmodel.StartupUiState.Authenticated
+        assertEquals(Role.CUSTOMER, auth.role)
+        assertEquals("Aarti Sharma", auth.name)
+    }
+
+    @Test
+    fun `bugfix 2 - job booking creates zero auto acceptance with open slots`() {
+        // Customer books single skill job
+        val singleJobResult = CoopRepository.bookJob(
+            skill = "Electrician",
+            location = "Indiranagar",
+            dateTime = "Today, 10:00 AM",
+            durationMinutes = 60,
+            priceInPaise = 30000L
+        )
+        assertTrue(singleJobResult.isSuccess)
+        val singleJob = singleJobResult.getOrThrow()
+        assertEquals(JobStatus.PENDING, singleJob.status)
+        assertEquals(0, singleJob.assignedWorkersCount())
+        assertFalse(singleJob.isFullyAssigned())
+        assertFalse(singleJob.hasAnyAssigned())
+
+        // Customer books multi skill job
+        val multiJobResult = CoopRepository.bookMultiRequirementJob(
+            requirements = listOf(
+                ServiceRequirement(skill = "Gardener", quantity = 2),
+                ServiceRequirement(skill = "Plumber", quantity = 1)
+            ),
+            location = "Whitefield",
+            dateTime = "Tomorrow, 2:00 PM",
+            durationMinutes = 120,
+            priceInPaise = 90000L
+        )
+        assertTrue(multiJobResult.isSuccess)
+        val multiJob = multiJobResult.getOrThrow()
+        assertEquals(JobStatus.PENDING, multiJob.status)
+        assertEquals(0, multiJob.assignedWorkersCount())
+        assertEquals(3, multiJob.totalWorkersNeeded())
+        assertFalse(multiJob.isFullyAssigned())
+        assertFalse(multiJob.hasAnyAssigned())
+    }
+
+    @Test
+    fun `bugfix 3 - role switching preserves user data and does not clear user preferences`() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        com.example.data.preferences.UserPreferences.init(app)
+        CoopRepository.initPreferences(app)
+
+        CoopRepository.loginUser(
+            name = "Sunil Electrician",
+            phone = "9822334455",
+            locality = "MG Road, Bangalore",
+            role = Role.WORKER,
+            workerSkill = "Electrician"
+        )
+        assertEquals(Role.WORKER, CoopRepository.currentRole.value)
+
+        // Switch to Customer
+        CoopRepository.switchRoleTo(Role.CUSTOMER)
+        assertEquals(Role.CUSTOMER, CoopRepository.currentRole.value)
+        assertTrue(com.example.data.preferences.UserPreferences.isUserLoggedIn())
+
+        // Switch back to Worker
+        CoopRepository.switchRoleTo(Role.WORKER)
+        assertEquals(Role.WORKER, CoopRepository.currentRole.value)
+        assertTrue(com.example.data.preferences.UserPreferences.isUserLoggedIn())
     }
 }

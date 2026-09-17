@@ -76,7 +76,7 @@ object TwoDeviceSyncManager {
     private val _syncLog = MutableStateFlow("Sahayog Network standby")
     val syncLog: StateFlow<String> = _syncLog.asStateFlow()
 
-    private val _demoSimulationEnabled = MutableStateFlow(true)
+    private val _demoSimulationEnabled = MutableStateFlow(false)
     val demoSimulationEnabled: StateFlow<Boolean> = _demoSimulationEnabled.asStateFlow()
 
     // Authoritative list of requests managed by the Hub
@@ -924,23 +924,7 @@ object TwoDeviceSyncManager {
     // ==========================================
 
     fun simulateWorkerAcceptanceForJob(jobId: String, delayMillis: Long = 1000) {
-        mainHandler.postDelayed({
-            val job = CoopRepository.jobs.value.firstOrNull { it.id == jobId }
-            if (job != null && (job.status == JobStatus.PENDING || job.requirements.any { it.assignedProviderIds.size < it.quantity })) {
-                val eligibleWorkers = CoopRepository.workers.value.filter { w ->
-                    w.verified && (job.requirements.isEmpty() || job.requirements.any { req ->
-                        w.skills.any { it.equals(req.skill, ignoreCase = true) }
-                    })
-                }
-                val chosenWorker = eligibleWorkers.firstOrNull() ?: CoopRepository.workers.value.first()
-                val targetReq = job.requirements.firstOrNull { req ->
-                    chosenWorker.skills.any { it.equals(req.skill, ignoreCase = true) } && req.assignedProviderIds.size < req.quantity
-                } ?: job.requirements.firstOrNull()
-
-                val skillToAccept = targetReq?.skill ?: job.skill
-                acceptRequirementOnHub(jobId, skillToAccept, chosenWorker.id, chosenWorker.name)
-            }
-        }, delayMillis)
+        // Zero automatic acceptance: slots remain strictly OPEN until manually accepted by an eligible provider
     }
 
     fun simulateCustomerRequest(
