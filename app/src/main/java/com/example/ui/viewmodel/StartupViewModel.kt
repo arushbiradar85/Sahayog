@@ -46,13 +46,25 @@ class StartupViewModel(application: Application) : AndroidViewModel(application)
         cityDistrict: String = "Bangalore",
         landmark: String = "",
         role: Role,
-        workerSkill: String = "Electrician",
+        skills: List<String> = listOf("Electrician"),
+        workerSkill: String = "",
         experienceYears: Int = 4,
-        cooperativeBranch: String = "Bangalore Urban Workers Cooperative",
-        adminPosition: String = "Committee Secretary",
-        customerServiceInterest: String = "Floor Cleaning",
+        cooperativeBranch: String = "",
+        adminPosition: String = "",
+        customerServiceInterest: String = "",
+        customerServiceInterests: List<String> = listOf("Floor Cleaning"),
         onNavigated: (Role) -> Unit
     ) {
+        val effectiveSkills = if (workerSkill.isNotBlank()) {
+            listOf(workerSkill) + skills.filter { it != workerSkill }
+        } else {
+            skills
+        }
+        val effectiveInterests = if (customerServiceInterest.isNotBlank()) {
+            listOf(customerServiceInterest) + customerServiceInterests.filter { it != customerServiceInterest }
+        } else {
+            customerServiceInterests
+        }
         viewModelScope.launch {
             val context = getApplication<Application>()
             val locality = if (landmark.isNotBlank()) "$areaLocality, $cityDistrict (Near $landmark)" else "$areaLocality, $cityDistrict"
@@ -66,11 +78,9 @@ class StartupViewModel(application: Application) : AndroidViewModel(application)
                 cityDistrict = cityDistrict,
                 landmark = landmark,
                 role = role,
-                workerSkill = workerSkill,
+                skills = effectiveSkills,
                 experienceYears = experienceYears,
-                cooperativeBranch = cooperativeBranch,
-                adminPosition = adminPosition,
-                customerServiceInterest = customerServiceInterest
+                customerServiceInterests = effectiveInterests
             )
 
             // 2. Sync with Repository StateFlows and UserPreferences
@@ -79,14 +89,12 @@ class StartupViewModel(application: Application) : AndroidViewModel(application)
                 phone = phone,
                 locality = locality,
                 role = role,
-                workerSkill = workerSkill,
+                skills = effectiveSkills,
                 areaLocality = areaLocality,
                 cityDistrict = cityDistrict,
                 landmark = landmark,
                 experienceYears = experienceYears,
-                cooperativeBranch = cooperativeBranch,
-                adminPosition = adminPosition,
-                customerServiceInterest = customerServiceInterest
+                customerServiceInterests = effectiveInterests
             )
 
             _uiState.value = StartupUiState.Authenticated(role, name)

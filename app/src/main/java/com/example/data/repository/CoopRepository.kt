@@ -9,6 +9,7 @@ import com.example.data.model.Job
 import com.example.data.model.JobStatus
 import com.example.data.model.LedgerEntry
 import com.example.data.model.Role
+import com.example.data.model.ServiceRequirement
 import com.example.data.model.Worker
 import com.example.data.preferences.UserPreferences
 import com.example.data.preferences.UserProfile
@@ -107,43 +108,44 @@ object CoopRepository {
 
         when (profile.role) {
             Role.CUSTOMER -> {
-                val existing = _customers.value.firstOrNull { it.id == "user_cust" }
+                val custId = if (profile.phone.isNotBlank()) "cust_" + profile.phone.takeLast(6) else "cust_" + profile.name.trim().replace(" ", "_").lowercase()
+                val existing = _customers.value.firstOrNull { it.id == custId }
                 val customer = existing?.copy(
                     name = profile.name,
                     phone = profile.phone,
                     location = profile.locality
                 ) ?: Customer(
-                    id = "user_cust",
+                    id = custId,
                     name = profile.name,
                     phone = profile.phone,
                     location = profile.locality
                 )
-                _customers.value = listOf(customer) + _customers.value.filter { it.id != "user_cust" }
-                _selectedCustomerId.value = "user_cust"
+                _customers.value = listOf(customer) + _customers.value.filter { it.id != custId }
+                _selectedCustomerId.value = custId
             }
             Role.WORKER -> {
-                val existing = _workers.value.firstOrNull { it.id == "user_worker" }
+                val workerId = if (profile.phone.isNotBlank()) "worker_" + profile.phone.takeLast(6) else "worker_" + profile.name.trim().replace(" ", "_").lowercase()
+                val existing = _workers.value.firstOrNull { it.id == workerId }
+                val workerSkills = profile.skills.ifEmpty { listOf("Electrician") }
                 val worker = existing?.copy(
                     name = profile.name,
                     phone = profile.phone,
-                    skills = listOf(profile.workerSkill)
+                    skills = workerSkills,
+                    experienceYears = profile.experienceYears
                 ) ?: Worker(
-                    id = "user_worker",
+                    id = workerId,
                     name = profile.name,
-                    skills = listOf(profile.workerSkill),
+                    skills = workerSkills,
                     rating = 4.9,
                     completedJobs = 6,
                     totalEarningsInPaise = 180000L,
                     verified = true,
                     cooperativeId = "coop_1",
                     phone = profile.phone,
-                    experienceYears = 4
+                    experienceYears = profile.experienceYears
                 )
-                _workers.value = listOf(worker) + _workers.value.filter { it.id != "user_worker" }
-                _selectedWorkerId.value = "user_worker"
-            }
-            Role.COOPERATIVE_ADMIN -> {
-                // Admin mode uses active cooperative
+                _workers.value = listOf(worker) + _workers.value.filter { it.id != workerId }
+                _selectedWorkerId.value = workerId
             }
         }
     }
@@ -153,15 +155,15 @@ object CoopRepository {
         phone: String,
         locality: String = "Indiranagar, Bangalore",
         role: Role,
-        workerSkill: String = "Electrician",
+        skills: List<String> = listOf("Electrician"),
+        workerSkill: String = "",
         areaLocality: String = "Indiranagar",
         cityDistrict: String = "Bangalore",
         landmark: String = "",
         experienceYears: Int = 4,
-        cooperativeBranch: String = "Bangalore Urban Workers Cooperative",
-        adminPosition: String = "Committee Secretary",
-        customerServiceInterest: String = "Floor Cleaning"
+        customerServiceInterests: List<String> = listOf("Floor Cleaning")
     ) {
+        val effectiveSkills = if (workerSkill.isNotBlank()) listOf(workerSkill) + skills.filter { it != workerSkill } else skills
         UserPreferences.saveLogin(
             name = name,
             phone = phone,
@@ -169,11 +171,9 @@ object CoopRepository {
             cityDistrict = cityDistrict,
             landmark = landmark,
             role = role,
-            workerSkill = workerSkill,
+            skills = effectiveSkills,
             experienceYears = experienceYears,
-            cooperativeBranch = cooperativeBranch,
-            adminPosition = adminPosition,
-            customerServiceInterest = customerServiceInterest
+            customerServiceInterests = customerServiceInterests
         )
         val profile = UserPreferences.getUserProfile()
         if (profile != null) {
@@ -181,10 +181,22 @@ object CoopRepository {
         }
     }
 
+    fun updateWorkerSkill(newSkill: String) {
+        val currentWorker = getActiveWorker()
+        val updatedSkills = (listOf(newSkill) + currentWorker.skills).distinct()
+        _workers.value = _workers.value.map {
+            if (it.id == currentWorker.id) it.copy(skills = updatedSkills) else it
+        }
+    }
+
     fun addExternalJob(job: Job) {
         _jobs.update { list ->
             if (list.none { it.id == job.id }) listOf(job) + list else list
         }
+    }
+
+    fun setAuthoritativeJobs(newJobs: List<Job>) {
+        _jobs.value = newJobs
     }
 
     fun logoutUser() {
@@ -201,9 +213,18 @@ object CoopRepository {
             val defaultName = when (role) {
                 Role.CUSTOMER -> "Ramesh Patil"
                 Role.WORKER -> "Sunil Kumar"
-                Role.COOPERATIVE_ADMIN -> "Cooperative Board"
             }
-            loginUser(defaultName, "9845012345", "Indiranagar, Bangalore", role)
+            val defaultSkills = when (role) {
+                Role.CUSTOMER -> listOf("Floor Cleaning")
+                Role.WORKER -> listOf("Electrician", "Gardener")
+            }
+            loginUser(
+                name = defaultName,
+                phone = "9845012345",
+                locality = "Indiranagar, Bangalore",
+                role = role,
+                skills = defaultSkills
+            )
         }
     }
 
@@ -290,6 +311,103 @@ object CoopRepository {
     }
 
     /**
+     * Customer Booking with Multi-Requirement Support:
+     * e.g. 1 Electrician + 2 Gardeners
+     */
+    fun bookMultiRequirementJob(
+        requirements: List<ServiceRequirement>,
+        location: String,
+        dateTime: String,
+        durationMinutes: Int,
+        priceInPaise: Long,
+        title: String = "",
+        instructions: String = ""
+    ): Result<Job> {
+        val cleanReqs = requirements.filter { it.quantity > 0 }
+        val primarySkill = if (cleanReqs.isNotEmpty()) {
+            cleanReqs.joinToString(", ") { "${it.quantity}x ${it.skill}" }
+        } else {
+            "General Service"
+        }
+
+        val newJob = Job(
+            id = "req_" + UUID.randomUUID().toString().take(8),
+            customerId = _selectedCustomerId.value,
+            workerId = null,
+            cooperativeId = _selectedCoopId.value,
+            skill = primarySkill,
+            location = location,
+            dateTime = dateTime,
+            durationMinutes = durationMinutes,
+            priceInPaise = priceInPaise,
+            escrowAmountInPaise = priceInPaise,
+            status = JobStatus.PENDING,
+            title = if (title.isNotBlank()) title else "$primarySkill Service",
+            description = instructions,
+            createdAtTimestamp = System.currentTimeMillis(),
+            preferredTime = dateTime,
+            instructions = instructions,
+            requirements = cleanReqs
+        )
+
+        _jobs.update { listOf(newJob) + it.filter { j -> j.id != newJob.id } }
+        return Result.success(newJob)
+    }
+
+    /**
+     * Provider accepts a specific requirement in a job:
+     * Checks if provider's skill matches the requirement,
+     * provider hasn't already accepted, and slots remain open.
+     */
+    fun acceptJobRequirement(jobId: String, skill: String, workerId: String, workerName: String): Boolean {
+        var updated = false
+        _jobs.update { list ->
+            list.map { job ->
+                if (job.id == jobId) {
+                    var reqMatched = false
+                    val updatedReqs = job.requirements.map { req ->
+                        val isMatchingSkill = req.skill.equals(skill, ignoreCase = true)
+                        val notAlreadyAssigned = !req.assignedProviderIds.contains(workerId)
+                        val hasOpenSlot = req.assignedProviderIds.size < req.quantity
+
+                        if (isMatchingSkill && notAlreadyAssigned && hasOpenSlot) {
+                            reqMatched = true
+                            updated = true
+                            req.copy(
+                                assignedProviderIds = req.assignedProviderIds + workerId,
+                                assignedProviderNames = req.assignedProviderNames + workerName
+                            )
+                        } else {
+                            req
+                        }
+                    }
+
+                    if (reqMatched) {
+                        val allFilled = updatedReqs.all { it.assignedProviderIds.size >= it.quantity }
+                        job.copy(
+                            workerId = workerId,
+                            requirements = updatedReqs,
+                            status = if (allFilled) JobStatus.ACCEPTED else JobStatus.PENDING
+                        )
+                    } else if (job.requirements.isEmpty() && job.status == JobStatus.PENDING) {
+                        // Fallback for legacy single-skill job
+                        updated = true
+                        job.copy(
+                            workerId = workerId,
+                            status = JobStatus.ACCEPTED
+                        )
+                    } else {
+                        job
+                    }
+                } else {
+                    job
+                }
+            }
+        }
+        return updated
+    }
+
+    /**
      * Worker accepts job:
      * PENDING -> ACCEPTED
      */
@@ -369,15 +487,11 @@ object CoopRepository {
     }
 
     /**
-     * Admin Releases Job:
-     * IN_PROGRESS / DISPUTED -> COMPLETED
-     * - Escrow cleared
-     * - Transparent payout calculated
-     * - SHA-256 Ledger entry generated in worker's chain
-     * - Worker earnings updated
-     * - Cooperative welfare fund updated
+     * Release Job Payout:
+     * Releases held escrow, credits worker ledger with SHA-256 block,
+     * updates cooperative welfare fund, and sets status to COMPLETED.
      */
-    fun adminReleaseJob(jobId: String): Boolean {
+    fun releaseJobPayout(jobId: String): Boolean {
         val job = _jobs.value.firstOrNull { it.id == jobId } ?: return false
         if (job.status != JobStatus.IN_PROGRESS && job.status != JobStatus.DISPUTED && job.status != JobStatus.ACCEPTED) {
             return false
@@ -457,6 +571,8 @@ object CoopRepository {
 
         return true
     }
+
+    fun adminReleaseJob(jobId: String): Boolean = releaseJobPayout(jobId)
 
     /**
      * Admin Refunds Customer:

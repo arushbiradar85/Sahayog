@@ -15,13 +15,18 @@ data class UserProfile(
     val landmark: String = "",
     val locality: String = "Indiranagar, Bangalore",
     val role: Role = Role.CUSTOMER,
-    val workerSkill: String = "Electrician",
+    val skills: List<String> = listOf("Electrician"),
     val experienceYears: Int = 4,
-    val cooperativeBranch: String = "Bangalore Urban Workers Cooperative",
-    val adminPosition: String = "Committee Secretary",
     val customerServiceInterest: String = "Floor Cleaning",
+    val customerServiceInterests: List<String> = listOf("Floor Cleaning"),
     val isLoggedIn: Boolean = false
-)
+) {
+    val workerSkill: String get() = skills.firstOrNull() ?: "Electrician"
+    val workerPrimarySkill: String get() = skills.firstOrNull() ?: "Electrician"
+    val workerSecondarySkills: List<String> get() = skills.drop(1)
+    val cooperativeBranch: String get() = "Main District Cluster"
+    val adminPosition: String get() = "Operations"
+}
 
 object UserPreferences {
     private const val PREFS_NAME = "sahayog_user_prefs"
@@ -33,11 +38,9 @@ object UserPreferences {
     private const val KEY_USER_LANDMARK = "key_user_landmark"
     private const val KEY_USER_LOCALITY = "key_user_locality"
     private const val KEY_USER_ROLE = "key_user_role"
-    private const val KEY_WORKER_SKILL = "key_worker_skill"
+    private const val KEY_WORKER_SKILLS = "key_worker_skills"
     private const val KEY_WORKER_EXP = "key_worker_exp"
-    private const val KEY_COOP_BRANCH = "key_coop_branch"
-    private const val KEY_ADMIN_POSITION = "key_admin_position"
-    private const val KEY_SERVICE_INTEREST = "key_service_interest"
+    private const val KEY_SERVICE_INTERESTS = "key_service_interests"
 
     private var sharedPreferences: SharedPreferences? = null
 
@@ -75,11 +78,11 @@ object UserPreferences {
             val city = prefs.getString(KEY_USER_CITY, "Bangalore") ?: "Bangalore"
             val landmark = prefs.getString(KEY_USER_LANDMARK, "") ?: ""
             val locality = prefs.getString(KEY_USER_LOCALITY, "$area, $city") ?: "$area, $city"
-            val workerSkill = prefs.getString(KEY_WORKER_SKILL, "Electrician") ?: "Electrician"
+            val skillsRaw = prefs.getString(KEY_WORKER_SKILLS, "Electrician") ?: "Electrician"
+            val skills = skillsRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("Electrician") }
             val exp = prefs.getInt(KEY_WORKER_EXP, 4)
-            val branch = prefs.getString(KEY_COOP_BRANCH, "Bangalore Urban Workers Cooperative") ?: "Bangalore Urban Workers Cooperative"
-            val adminPos = prefs.getString(KEY_ADMIN_POSITION, "Committee Secretary") ?: "Committee Secretary"
-            val interest = prefs.getString(KEY_SERVICE_INTEREST, "Floor Cleaning") ?: "Floor Cleaning"
+            val interestsRaw = prefs.getString(KEY_SERVICE_INTERESTS, "Floor Cleaning") ?: "Floor Cleaning"
+            val interests = interestsRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("Floor Cleaning") }
 
             val profile = UserProfile(
                 name = name,
@@ -89,11 +92,10 @@ object UserPreferences {
                 landmark = landmark,
                 locality = locality,
                 role = role,
-                workerSkill = workerSkill,
+                skills = skills,
                 experienceYears = exp,
-                cooperativeBranch = branch,
-                adminPosition = adminPos,
-                customerServiceInterest = interest,
+                customerServiceInterest = interests.firstOrNull() ?: "Floor Cleaning",
+                customerServiceInterests = interests,
                 isLoggedIn = true
             )
             _userProfileFlow.value = profile
@@ -113,23 +115,22 @@ object UserPreferences {
         cityDistrict: String = "Bangalore",
         landmark: String = "",
         role: Role,
-        workerSkill: String = "Electrician",
+        skills: List<String> = listOf("Electrician"),
         experienceYears: Int = 4,
-        cooperativeBranch: String = "Bangalore Urban Workers Cooperative",
-        adminPosition: String = "Committee Secretary",
-        customerServiceInterest: String = "Floor Cleaning"
+        customerServiceInterests: List<String> = listOf("Floor Cleaning")
     ) {
         val cleanName = name.trim().ifEmpty {
             when (role) {
                 Role.CUSTOMER -> "Ramesh Patil"
                 Role.WORKER -> "Sunil Kumar"
-                Role.COOPERATIVE_ADMIN -> "Cooperative Board"
             }
         }
         val cleanPhone = phone.trim().ifEmpty { "9845012345" }
         val cleanArea = areaLocality.trim().ifEmpty { "Indiranagar" }
         val cleanCity = cityDistrict.trim().ifEmpty { "Bangalore" }
         val locality = if (landmark.isNotBlank()) "$cleanArea, $cleanCity (Near $landmark)" else "$cleanArea, $cleanCity"
+        val cleanSkills = skills.filter { it.isNotBlank() }.ifEmpty { listOf("Electrician") }
+        val cleanInterests = customerServiceInterests.filter { it.isNotBlank() }.ifEmpty { listOf("Floor Cleaning") }
 
         val profile = UserProfile(
             name = cleanName,
@@ -139,11 +140,10 @@ object UserPreferences {
             landmark = landmark.trim(),
             locality = locality,
             role = role,
-            workerSkill = workerSkill,
+            skills = cleanSkills,
             experienceYears = experienceYears,
-            cooperativeBranch = cooperativeBranch,
-            adminPosition = adminPosition,
-            customerServiceInterest = customerServiceInterest,
+            customerServiceInterest = cleanInterests.firstOrNull() ?: "Floor Cleaning",
+            customerServiceInterests = cleanInterests,
             isLoggedIn = true
         )
 
@@ -156,17 +156,26 @@ object UserPreferences {
             putString(KEY_USER_LANDMARK, landmark.trim())
             putString(KEY_USER_LOCALITY, locality)
             putString(KEY_USER_ROLE, role.name)
-            putString(KEY_WORKER_SKILL, workerSkill)
+            putString(KEY_WORKER_SKILLS, cleanSkills.joinToString(","))
             putInt(KEY_WORKER_EXP, experienceYears)
-            putString(KEY_COOP_BRANCH, cooperativeBranch)
-            putString(KEY_ADMIN_POSITION, adminPosition)
-            putString(KEY_SERVICE_INTEREST, customerServiceInterest)
+            putString(KEY_SERVICE_INTERESTS, cleanInterests.joinToString(","))
             apply()
         }
 
         _userProfileFlow.value = profile
         _userRoleFlow.value = role
         _isLoggedInFlow.value = true
+    }
+
+    fun updateWorkerSkills(newSkills: List<String>) {
+        val current = _userProfileFlow.value ?: return
+        val cleanSkills = newSkills.filter { it.isNotBlank() }.ifEmpty { listOf("Electrician") }
+        val updated = current.copy(skills = cleanSkills)
+        sharedPreferences?.edit()?.apply {
+            putString(KEY_WORKER_SKILLS, cleanSkills.joinToString(","))
+            apply()
+        }
+        _userProfileFlow.value = updated
     }
 
     fun clearLogin() {
@@ -179,11 +188,9 @@ object UserPreferences {
             remove(KEY_USER_LANDMARK)
             remove(KEY_USER_LOCALITY)
             remove(KEY_USER_ROLE)
-            remove(KEY_WORKER_SKILL)
+            remove(KEY_WORKER_SKILLS)
             remove(KEY_WORKER_EXP)
-            remove(KEY_COOP_BRANCH)
-            remove(KEY_ADMIN_POSITION)
-            remove(KEY_SERVICE_INTEREST)
+            remove(KEY_SERVICE_INTERESTS)
             apply()
         }
         _userProfileFlow.value = null

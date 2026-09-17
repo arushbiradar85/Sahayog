@@ -54,14 +54,6 @@ object Localization {
     fun providerBtn(lang: AppLanguage): String =
         if (isMarathi(lang)) "कामगार म्हणून सुरू करा ➔" else "Continue as Worker ➔"
 
-    fun adminRoleTitle(lang: AppLanguage): String =
-        if (isMarathi(lang)) "🏛️ सहकारी संस्था समिती / Admin Login" else "🏛️ Co-op Committee / Admin Login"
-    fun adminRoleDesc(lang: AppLanguage): String =
-        if (isMarathi(lang)) "वाद निवारण, एस्क्रो निधी मंजुरी, न्याय्य काम वाटप व कल्याण निधी व्यवस्थापन"
-        else "Dispute mediation, escrow payout release, fair dispatch & welfare oversight"
-    fun adminBtn(lang: AppLanguage): String =
-        if (isMarathi(lang)) "समिती लॉगिन ➔" else "Admin Login ➔"
-
     // Services
     fun serviceName(name: String, lang: AppLanguage): String {
         if (!isMarathi(lang)) return name
@@ -162,18 +154,4 @@ object Localization {
     fun ledgerSubtitle(lang: AppLanguage): String =
         if (isMarathi(lang)) "प्रत्येक कामाच्या कमाईची SHA-256 सुरक्षित नोंद. कोणालाही फेरफार करता येत नाही."
         else "Immutable SHA-256 hash-chained payout blocks. Tamper-evident and verifiable."
-
-    // Admin Screen
-    fun adminDashboardTitle(lang: AppLanguage): String =
-        if (isMarathi(lang)) "सहकारी समिती प्रशासन" else "Cooperative Admin Panel"
-    fun escrowInHoldTitle(lang: AppLanguage): String =
-        if (isMarathi(lang)) "सध्या एस्क्रोमध्ये सुरक्षित रक्कम" else "Escrow Held in Trust"
-    fun releaseEscrowBtn(lang: AppLanguage): String =
-        if (isMarathi(lang)) "मंजूर करा व पैसे द्या (Release) ✓" else "Release Escrow to Worker ✓"
-    fun refundBtn(lang: AppLanguage): String =
-        if (isMarathi(lang)) "ग्राहकाला पैसे परत करा (Refund)" else "Refund Customer"
-    fun disputeHeader(lang: AppLanguage): String =
-        if (isMarathi(lang)) "तक्रार निवारण (ग्राहक तक्रारी)" else "Dispute Mediation Cases"
-    fun fairDispatchBtn(lang: AppLanguage): String =
-        if (isMarathi(lang)) "न्याय्य काम वाटप व जिनि गुणांक विश्लेषण ➔" else "Fair Dispatch & Gini Analysis ➔"
 }

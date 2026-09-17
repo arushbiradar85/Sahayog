@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -107,7 +108,8 @@ fun WorkerScreen(
     val language by repository.appLanguage.collectAsState()
     val isMarathi = Localization.isMarathi(language)
 
-    val activeWorker = repository.getActiveWorker()
+    val workers by repository.workers.collectAsState()
+    val activeWorker = workers.firstOrNull { it.id == repository.getActiveWorker().id } ?: repository.getActiveWorker()
     val userProfile by repository.activeUserProfile.collectAsState()
     val jobs by repository.jobs.collectAsState()
     val ledger by repository.ledger.collectAsState()
@@ -126,13 +128,30 @@ fun WorkerScreen(
     // Filter declined jobs locally in this session
     var declinedJobIds by remember { mutableStateOf(setOf<String>()) }
 
-    // Available pending jobs (not declined)
+    // Determine all active trades/skills for this worker
+    val workerSkills = remember(activeWorker, userProfile) {
+        val list = mutableListOf<String>()
+        list.addAll(activeWorker.skills)
+        if (activeWorker.skill.isNotBlank()) list.add(activeWorker.skill)
+        userProfile?.let { prof ->
+            if (prof.workerPrimarySkill.isNotBlank()) list.add(prof.workerPrimarySkill)
+            prof.workerSecondarySkills.forEach { s -> if (s.isNotBlank()) list.add(s) }
+        }
+        list.filter { it.isNotBlank() }.distinct()
+    }
+
+    // Available jobs: match worker skill, not declined, worker not assigned yet, and has open slot
     val availableJobs = jobs.filter { job ->
-        job.status == JobStatus.PENDING && !declinedJobIds.contains(job.id)
+        !declinedJobIds.contains(job.id) &&
+        job.matchesWorkerSkill(workerSkills) &&
+        !job.isWorkerAssigned(activeWorker.id) &&
+        (job.status == JobStatus.PENDING || (!job.isFullyAssigned() && job.requirements.isNotEmpty()))
     }
 
     // Worker's assigned or completed jobs
-    val myJobs = jobs.filter { it.workerId == activeWorker.id }
+    val myJobs = jobs.filter { job ->
+        job.isWorkerAssigned(activeWorker.id) || job.workerId == activeWorker.id
+    }
 
     // Worker's ledger entries (sorted latest first)
     val workerLedger = ledger.filter { it.workerId == activeWorker.id }.sortedByDescending { it.timestamp }
@@ -206,14 +225,17 @@ fun WorkerScreen(
                 0 -> WorkerAvailableRequestsTab(
                     availableJobs = availableJobs,
                     activeWorker = activeWorker,
+                    workerSkills = workerSkills,
                     adminFeePercent = coop.adminFeePercent,
                     isMarathi = isMarathi,
-                    onAccept = { job ->
-                        repository.acceptJob(job.id, activeWorker.id)
-                        TwoDeviceSyncManager.broadcastAcceptance(job.id, activeWorker.id, activeWorker.name)
-                        NotificationHelper.notifyWorkerAccepted(context, activeWorker.name, job.skill)
+                    onAccept = { job, targetSkill ->
+                        val skillToAccept = targetSkill ?: workerSkills.firstOrNull { ws -> job.requirements.any { it.matchesSkill(ws) } } ?: job.skill
+                        repository.acceptJobRequirement(job.id, skillToAccept, activeWorker.id, activeWorker.name)
+                        val updatedJob = repository.jobs.value.firstOrNull { it.id == job.id } ?: job
+                        TwoDeviceSyncManager.postAcceptanceToHub(updatedJob, activeWorker.id, skillToAccept, activeWorker.name)
+                        NotificationHelper.notifyWorkerAccepted(context, activeWorker.name, skillToAccept)
                         selectedNavIndex = 1 // Switch to My Jobs
-                        Toast.makeText(context, "Job accepted! Customer notified.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Accepted as $skillToAccept! Synced to Hub.", Toast.LENGTH_SHORT).show()
                     },
                     onDecline = { job ->
                         declinedJobIds = declinedJobIds + job.id
@@ -235,8 +257,13 @@ fun WorkerScreen(
                 3 -> WorkerProfileTab(
                     worker = activeWorker,
                     userProfile = userProfile,
+                    workerSkills = workerSkills,
                     isMarathi = isMarathi,
                     onToggleLanguage = { CoopRepository.toggleLanguage() },
+                    onUpdateSkill = { newSkill ->
+                        repository.updateWorkerSkill(newSkill)
+                        Toast.makeText(context, "Trade updated to $newSkill", Toast.LENGTH_SHORT).show()
+                    },
                     onChangeRole = { CoopRepository.logoutUser() },
                     onResetDemo = { showResetConfirmDialog = true }
                 )
@@ -406,9 +433,10 @@ fun WorkerScreen(
 private fun WorkerAvailableRequestsTab(
     availableJobs: List<Job>,
     activeWorker: Worker,
+    workerSkills: List<String>,
     adminFeePercent: Int,
     isMarathi: Boolean,
-    onAccept: (Job) -> Unit,
+    onAccept: (Job, String?) -> Unit,
     onDecline: (Job) -> Unit
 ) {
     val sdf = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
@@ -458,7 +486,7 @@ private fun WorkerAvailableRequestsTab(
                         }
                     }
                     Text(
-                        text = "${activeWorker.skills.joinToString(", ")} • ⭐ ${String.format(Locale.US, "%.1f", activeWorker.rating)}",
+                        text = "Your Trade: ${workerSkills.joinToString(", ")} • ⭐ ${String.format(Locale.US, "%.1f", activeWorker.rating)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -474,7 +502,7 @@ private fun WorkerAvailableRequestsTab(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (isMarathi) "उपलब्ध ग्राहक विनंत्या (${availableJobs.size})" else "Available Job Requests (${availableJobs.size})",
+                text = if (isMarathi) "उपलब्ध ग्राहक विनंत्या (${availableJobs.size})" else "Matching Job Requests (${availableJobs.size})",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -510,12 +538,12 @@ private fun WorkerAvailableRequestsTab(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = if (isMarathi) "सध्या कोणतीही नवीन विनंती उपलब्ध नाही" else "No new requests waiting right now",
+                        text = if (isMarathi) "तुमच्या कौशल्यांशी जुळणारी विनंती नाही" else "No matching requests waiting for ${workerSkills.joinToString("/")}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = if (isMarathi) "नवीन ग्राहक विनंत्या येथे त्वरित दिसतील" else "New customer bookings will appear here instantly via Wi-Fi sync",
+                        text = if (isMarathi) "सहयोग हब वरून नवीन कामे आपोआप दिसतील" else "New requests from Customers via Sahayog Hub appear here in real time",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -575,7 +603,7 @@ private fun WorkerAvailableRequestsTab(
 
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(
-                                        text = "Your Payout",
+                                        text = "Pooled Payout",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.outline
                                     )
@@ -623,6 +651,80 @@ private fun WorkerAvailableRequestsTab(
                                 }
                             }
 
+                            // Multi-requirement breakdown
+                            if (job.requirements.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = "Workers Needed (${job.assignedWorkersCount()}/${job.totalWorkersNeeded()} Assigned):",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        job.requirements.forEach { req ->
+                                            val matchesWorker = workerSkills.any { ws -> ws.equals(req.skill, ignoreCase = true) }
+                                            val isWorkerAssignedToThis = req.assignedProviderIds.contains(activeWorker.id)
+                                            val hasSlot = !req.isFullyAssigned()
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(getCategoryIcon(req.skill), contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "${req.quantity}x ${req.skill}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = if (req.isFullyAssigned()) "(Filled ✓)" else "(${req.openSlots()} open)",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = if (req.isFullyAssigned()) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline
+                                                    )
+                                                }
+
+                                                if (isWorkerAssignedToThis) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Color(0xFFE8F5E9)
+                                                    ) {
+                                                        Text(
+                                                            text = "You Accepted ✓",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF1B5E20),
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                } else if (matchesWorker && hasSlot) {
+                                                    Button(
+                                                        onClick = { onAccept(job, req.skill) },
+                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        modifier = Modifier.testTag("accept_req_${job.id}_${req.skill.lowercase()}")
+                                                    ) {
+                                                        Text("Accept as ${req.skill}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                } else if (!matchesWorker) {
+                                                    Text(
+                                                        text = "Requires ${req.skill}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.outline
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             // Optional Instructions
                             if (!job.instructions.isNullOrBlank()) {
                                 Surface(
@@ -659,7 +761,7 @@ private fun WorkerAvailableRequestsTab(
                                 }
                             }
 
-                            // Accept & Decline Action Buttons
+                            // Bottom Decline & Single-Job Accept Button (if job has no requirements list)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -674,16 +776,18 @@ private fun WorkerAvailableRequestsTab(
                                     Text(if (isMarathi) "नकार द्या" else "Decline")
                                 }
 
-                                Button(
-                                    onClick = { onAccept(job) },
-                                    modifier = Modifier
-                                        .weight(1.5f)
-                                        .testTag("accept_job_button_${job.id}"),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(if (isMarathi) "स्वीकारा" else "Accept Job")
+                                if (job.requirements.isEmpty()) {
+                                    Button(
+                                        onClick = { onAccept(job, null) },
+                                        modifier = Modifier
+                                            .weight(1.5f)
+                                            .testTag("accept_job_button_${job.id}"),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(if (isMarathi) "स्वीकारा" else "Accept Job")
+                                    }
                                 }
                             }
                         }
@@ -1056,17 +1160,21 @@ private fun WorkerEarningsLedgerTab(
 private fun WorkerProfileTab(
     worker: Worker,
     userProfile: UserProfile?,
+    workerSkills: List<String>,
     isMarathi: Boolean,
     onToggleLanguage: () -> Unit,
+    onUpdateSkill: (String) -> Unit,
     onChangeRole: () -> Unit,
     onResetDemo: () -> Unit
 ) {
     val syncLog by TwoDeviceSyncManager.syncLog.collectAsState()
     val localIp by TwoDeviceSyncManager.localIp.collectAsState()
-    val partnerIp by TwoDeviceSyncManager.partnerIp.collectAsState()
+    val isHubMode by TwoDeviceSyncManager.isHubMode.collectAsState()
+    val hubIp by TwoDeviceSyncManager.hubIp.collectAsState()
     val demoSimulation by TwoDeviceSyncManager.demoSimulationEnabled.collectAsState()
+    val requestsCount by TwoDeviceSyncManager.requestsCount.collectAsState()
 
-    var partnerIpInput by remember { mutableStateOf(partnerIp) }
+    var hubIpInput by remember(hubIp) { mutableStateOf(hubIp) }
 
     LazyColumn(
         modifier = Modifier
@@ -1121,14 +1229,54 @@ private fun WorkerProfileTab(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                    Text(text = "Trades & Skills: ${worker.skills.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
+                    Text(text = "Active Trades: ${workerSkills.joinToString(", ")}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                     Text(text = "Cooperative Branch: ${userProfile?.cooperativeBranch ?: "Main District Cluster"}", style = MaterialTheme.typography.bodySmall)
                     Text(text = "Rating: ⭐ ${String.format(Locale.US, "%.1f", worker.rating)} • Total Earnings: ${WageEngine.formatPaiseCompact(worker.totalEarningsInPaise)}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
 
-        // Two-Device Live Network & Demo Sync
+        // Trade / Skill Selector Card for Hackathon multi-phone demo
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = if (isMarathi) "कौशल्य / व्यवसाय निवडा (डेमो फोन)" else "Provider Trade / Role (Demo Phone)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Set this device's skill to demonstrate targeted job filtering across phones:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    val allTrades = listOf("Electrician", "Gardener", "Plumber", "Carpenter", "Cleaning", "Painter", "Mason", "Technician")
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(allTrades) { trade ->
+                            val isSelected = workerSkills.any { it.equals(trade, ignoreCase = true) }
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onUpdateSkill(trade) },
+                                label = { Text(trade, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                leadingIcon = {
+                                    Icon(getCategoryIcon(trade), contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sahayog Hub & Two-Device Multi-Phone Sync
         item {
             Card(
                 shape = RoundedCornerShape(14.dp),
@@ -1141,28 +1289,16 @@ private fun WorkerProfileTab(
                         Icon(Icons.Default.Wifi, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (isMarathi) "दोन उपकरणे थेट सिंक (Local Wi-Fi)" else "Two-Device Local Wi-Fi Sync",
+                            text = if (isMarathi) "सहयोग हब आणि मल्टी-फोन सिंक" else "Sahayog Multi-Phone Hub Sync",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
                     Text(
-                        text = "My Device IP: $localIp (Port 8989)",
+                        text = "This Device IP: $localIp (Port 8989)",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold
-                    )
-
-                    OutlinedTextField(
-                        value = partnerIpInput,
-                        onValueChange = {
-                            partnerIpInput = it
-                            TwoDeviceSyncManager.setPartnerIp(it)
-                        },
-                        label = { Text("Customer Phone IP Address") },
-                        placeholder = { Text("e.g. 192.168.1.4") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
                     )
 
                     Row(
@@ -1170,8 +1306,41 @@ private fun WorkerProfileTab(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Run this device as Sahayog Hub", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (isHubMode) "Hub active ($requestsCount stored requests)" else "Clients connect to Hub IP",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        Switch(
+                            checked = isHubMode,
+                            onCheckedChange = { TwoDeviceSyncManager.setHubMode(it) }
+                        )
+                    }
+
+                    if (!isHubMode) {
+                        OutlinedTextField(
+                            value = hubIpInput,
+                            onValueChange = {
+                                hubIpInput = it
+                                TwoDeviceSyncManager.setHubIp(it)
+                            },
+                            label = { Text("Dedicated Hub Phone IP Address") },
+                            placeholder = { Text("e.g. 192.168.1.5") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = "Auto-Simulation Mode (Single Device)",
+                            text = "Auto-Simulation (Single Device)",
                             style = MaterialTheme.typography.bodySmall
                         )
                         Switch(
@@ -1186,7 +1355,7 @@ private fun WorkerProfileTab(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Sync Status: $syncLog",
+                            text = "Status: $syncLog",
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(8.dp)
                         )
@@ -1244,7 +1413,7 @@ private fun WorkerProfileTab(
                     Column {
                         Text(text = if (isMarathi) "भूमिका बदला / प्रोफाइल रीसेट" else "Change Role / Edit Profile", fontWeight = FontWeight.Medium)
                         Text(
-                            text = if (isMarathi) "ग्राहक किंवा व्यवस्थापक भूमिकेत जाण्यासाठी" else "Switch to Customer or Admin onboarding",
+                            text = if (isMarathi) "ग्राहक भूमिकेत जाण्यासाठी" else "Switch to Customer onboarding",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

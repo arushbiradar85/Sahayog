@@ -6,7 +6,10 @@ import com.example.data.engine.FairDispatchEngine
 import com.example.data.engine.LedgerEngine
 import com.example.data.engine.WageEngine
 import com.example.data.model.JobStatus
+import com.example.data.model.Role
+import com.example.data.model.ServiceRequirement
 import com.example.data.repository.CoopRepository
+import com.example.util.TwoDeviceSyncManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -379,5 +382,190 @@ class ExampleRobolectricTest {
         assertTrue(equitable.top20SharePercent <= greedy.top20SharePercent)
         // Comparable waiting-time metric
         assertTrue(equitable.averageWaitTimeMinutes <= greedy.averageWaitTimeMinutes)
+    }
+
+    @Test
+    fun `multi-phone audit - provider persists multiple skills`() {
+        // Step 5 multi-skill registration: provider registers with Electrician, Plumber, Painter
+        val multiSkills = listOf("Electrician", "Plumber", "Painter")
+        CoopRepository.loginUser(
+            name = "Anil Multi-Tech",
+            phone = "9876500001",
+            role = Role.WORKER,
+            skills = multiSkills
+        )
+
+        val profile = CoopRepository.activeUserProfile.value
+        assertNotNull(profile)
+        val currentWorker = CoopRepository.getActiveWorker()
+        assertEquals(3, currentWorker.skills.size)
+        assertTrue(currentWorker.skills.contains("Electrician"))
+        assertTrue(currentWorker.skills.contains("Plumber"))
+        assertTrue(currentWorker.skills.contains("Painter"))
+    }
+
+    @Test
+    fun `multi-phone audit - multi-worker request splits, filters, and supports independent acceptance`() {
+        // Customer creates request: Electrician x 1, Gardener x 2
+        val reqs = listOf(
+            ServiceRequirement(skill = "Electrician", quantity = 1),
+            ServiceRequirement(skill = "Gardener", quantity = 2)
+        )
+        val bookResult = CoopRepository.bookMultiRequirementJob(
+            requirements = reqs,
+            location = "Indiranagar, Bangalore",
+            dateTime = "Today, 3:00 PM",
+            durationMinutes = 120,
+            priceInPaise = 150000L,
+            title = "Multi-worker job",
+            instructions = "Require electrician and gardeners"
+        )
+        assertTrue(bookResult.isSuccess)
+        val job = bookResult.getOrNull()!!
+        assertEquals(3, job.totalWorkersNeeded())
+        assertEquals(0, job.assignedWorkersCount())
+        assertFalse(job.isFullyAssigned())
+        assertEquals(JobStatus.PENDING, job.status)
+
+        // Providers filter:
+        // Electrician provider (w_1) matches Electrician slot
+        val electricianSkills = listOf("Electrician")
+        assertTrue(job.matchesWorkerSkill(electricianSkills))
+
+        // Gardener provider matches Gardener slot
+        val gardenerSkills = listOf("Gardener")
+        assertTrue(job.matchesWorkerSkill(gardenerSkills))
+
+        // Unrelated provider (e.g. Driver) does NOT match
+        val driverSkills = listOf("Driver")
+        assertFalse(job.matchesWorkerSkill(driverSkills))
+
+        // Provider 1 (Electrician) accepts Electrician slot
+        val accept1 = CoopRepository.acceptJobRequirement(
+            jobId = job.id,
+            skill = "Electrician",
+            workerId = "w_elec_1",
+            workerName = "Sunil Electrician"
+        )
+        assertTrue(accept1)
+
+        val jobAfter1 = CoopRepository.jobs.value.first { it.id == job.id }
+        assertEquals(1, jobAfter1.assignedWorkersCount())
+        assertFalse(jobAfter1.isFullyAssigned())
+        assertTrue(jobAfter1.hasAnyAssigned())
+        assertEquals(JobStatus.PENDING, jobAfter1.status)
+
+        // Electrician slot is now FULL (1/1). Electrician should NO LONGER match open slots
+        assertFalse(jobAfter1.matchesWorkerSkill(electricianSkills))
+
+        // But Gardener still has open slots (0/2)
+        assertTrue(jobAfter1.matchesWorkerSkill(gardenerSkills))
+
+        // Second Electrician provider cannot accept the full Electrician slot
+        val acceptDupElectrician = CoopRepository.acceptJobRequirement(
+            jobId = job.id,
+            skill = "Electrician",
+            workerId = "w_elec_2",
+            workerName = "Rajesh Electrician"
+        )
+        assertFalse(acceptDupElectrician)
+
+        // Provider 2 (Gardener A) accepts 1 Gardener slot
+        val accept2 = CoopRepository.acceptJobRequirement(
+            jobId = job.id,
+            skill = "Gardener",
+            workerId = "w_gard_1",
+            workerName = "Ramesh Gardener"
+        )
+        assertTrue(accept2)
+
+        val jobAfter2 = CoopRepository.jobs.value.first { it.id == job.id }
+        assertEquals(2, jobAfter2.assignedWorkersCount())
+        assertFalse(jobAfter2.isFullyAssigned())
+
+        // Duplicate acceptance prevention: Same provider (Ramesh Gardener) cannot accept again
+        val acceptDupProvider = CoopRepository.acceptJobRequirement(
+            jobId = job.id,
+            skill = "Gardener",
+            workerId = "w_gard_1",
+            workerName = "Ramesh Gardener"
+        )
+        assertFalse(acceptDupProvider)
+
+        // Provider 3 (Gardener B) accepts second Gardener slot
+        val accept3 = CoopRepository.acceptJobRequirement(
+            jobId = job.id,
+            skill = "Gardener",
+            workerId = "w_gard_2",
+            workerName = "Suresh Gardener"
+        )
+        assertTrue(accept3)
+
+        // All 3 slots filled! (1 Electrician + 2 Gardeners)
+        val jobAfter3 = CoopRepository.jobs.value.first { it.id == job.id }
+        assertEquals(3, jobAfter3.assignedWorkersCount())
+        assertTrue(jobAfter3.isFullyAssigned())
+        assertEquals(JobStatus.ACCEPTED, jobAfter3.status)
+
+        // No more open slots for Gardener
+        assertFalse(jobAfter3.matchesWorkerSkill(gardenerSkills))
+
+        // Customer sees all assigned provider names
+        val allNames = jobAfter3.allAssignedProviderNames()
+        assertEquals(3, allNames.size)
+        assertTrue(allNames.contains("Sunil Electrician"))
+        assertTrue(allNames.contains("Ramesh Gardener"))
+        assertTrue(allNames.contains("Suresh Gardener"))
+    }
+
+    @Test
+    fun `multi-phone audit - job serialization preserves multi-worker requirements across restart`() {
+        val reqs = listOf(
+            ServiceRequirement(
+                skill = "Electrician",
+                quantity = 1,
+                assignedProviderIds = listOf("w_1"),
+                assignedProviderNames = listOf("Sunil Electrician")
+            ),
+            ServiceRequirement(
+                skill = "Gardener",
+                quantity = 2,
+                assignedProviderIds = listOf("w_2"),
+                assignedProviderNames = listOf("Ramesh Gardener")
+            )
+        )
+        val originalJob = com.example.data.model.Job(
+            id = "audit_req_101",
+            customerId = "cust_demo",
+            workerId = null,
+            cooperativeId = "coop_blr",
+            skill = "Electrician",
+            location = "Indiranagar, Bangalore",
+            dateTime = "Today, 3:00 PM",
+            durationMinutes = 120,
+            priceInPaise = 150000L,
+            escrowAmountInPaise = 150000L,
+            status = JobStatus.PENDING,
+            title = "Multi-worker job",
+            description = "Electrician & Gardener needed",
+            createdAtTimestamp = System.currentTimeMillis(),
+            requirements = reqs
+        )
+
+        // Serialize to JSON
+        val json = TwoDeviceSyncManager.jobToJson(originalJob)
+        assertNotNull(json)
+
+        // Deserialize back
+        val restored = TwoDeviceSyncManager.jsonToJob(json)
+        assertNotNull(restored)
+        assertEquals(originalJob.id, restored!!.id)
+        assertEquals(2, restored.requirements.size)
+        assertEquals(1, restored.requirements[0].quantity)
+        assertEquals(listOf("w_1"), restored.requirements[0].assignedProviderIds)
+        assertEquals(listOf("Sunil Electrician"), restored.requirements[0].assignedProviderNames)
+        assertEquals(2, restored.requirements[1].quantity)
+        assertEquals(listOf("w_2"), restored.requirements[1].assignedProviderIds)
+        assertEquals(listOf("Ramesh Gardener"), restored.requirements[1].assignedProviderNames)
     }
 }

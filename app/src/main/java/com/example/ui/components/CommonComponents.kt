@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.HourglassTop
@@ -93,8 +92,7 @@ fun RoleSwitcherBar(
                 Text(
                     text = when (currentRole) {
                         Role.CUSTOMER -> "🟢 Customer Mode Active"
-                        Role.WORKER -> "🟢 Worker Mode Active"
-                        Role.COOPERATIVE_ADMIN -> "🟢 Admin Mode Active"
+                        Role.WORKER -> "🟢 Provider Mode Active"
                     },
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall,
@@ -106,7 +104,7 @@ fun RoleSwitcherBar(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Large high-contrast visual cards for 3 roles
+        // Large high-contrast visual cards for 2 roles
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -124,24 +122,13 @@ fun RoleSwitcherBar(
             )
             RoleCardItem(
                 role = Role.WORKER,
-                englishTitle = "WORKER",
+                englishTitle = "PROVIDER",
                 hindiTitle = "कामगार",
                 actionSubtitle = "Earn & Work",
                 icon = Icons.Default.Engineering,
                 isSelected = currentRole == Role.WORKER,
                 activeColor = Color(0xFF059669), // Emerald Green
                 onClick = { onRoleSelected(Role.WORKER) },
-                modifier = Modifier.weight(1f)
-            )
-            RoleCardItem(
-                role = Role.COOPERATIVE_ADMIN,
-                englishTitle = "COOP ADMIN",
-                hindiTitle = "सहकारी",
-                actionSubtitle = "Review & Escrow",
-                icon = Icons.Default.AdminPanelSettings,
-                isSelected = currentRole == Role.COOPERATIVE_ADMIN,
-                activeColor = Color(0xFF7C3AED), // Purple/Indigo
-                onClick = { onRoleSelected(Role.COOPERATIVE_ADMIN) },
                 modifier = Modifier.weight(1f)
             )
         }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -31,8 +33,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -54,7 +58,6 @@ import com.example.data.model.Role
 import com.example.data.preferences.UserPreferences
 import com.example.data.repository.CoopRepository
 import com.example.ui.components.OfflineNoticeBanner
-import com.example.ui.screens.AdminScreen
 import com.example.ui.screens.CustomerScreen
 import com.example.ui.screens.FairnessScreen
 import com.example.ui.screens.StartupScreen
@@ -62,6 +65,7 @@ import com.example.ui.screens.WorkerScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.util.AppLanguage
 import com.example.util.Localization
+import com.example.util.TwoDeviceSyncManager
 
 class MainActivity : ComponentActivity() {
 
@@ -102,6 +106,13 @@ fun SahayogMainApp() {
 
     var showFairnessScreen by remember { mutableStateOf(false) }
     var showResetConfirmationDialog by remember { mutableStateOf(false) }
+    var showHubDialog by remember { mutableStateOf(false) }
+
+    val isHubMode by TwoDeviceSyncManager.isHubMode.collectAsState()
+    val localIp by TwoDeviceSyncManager.localIp.collectAsState()
+    val hubIp by TwoDeviceSyncManager.hubIp.collectAsState()
+    val syncLog by TwoDeviceSyncManager.syncLog.collectAsState()
+    val requestsCount by TwoDeviceSyncManager.requestsCount.collectAsState()
 
     // If user has not chosen role / logged in, show minimal service-oriented StartupScreen
     if (!hasSelectedRole) {
@@ -124,7 +135,6 @@ fun SahayogMainApp() {
     val roleSubtitle = when (currentRole) {
         Role.CUSTOMER -> if (isMarathi) "ग्राहक सेवा मंच" else "Consumer Services"
         Role.WORKER -> if (isMarathi) "कामगार डॅशबोर्ड" else "Artisan Dashboard"
-        Role.COOPERATIVE_ADMIN -> if (isMarathi) "सहकारी समिती प्रशासन" else "Cooperative Admin"
     }
 
     Scaffold(
@@ -148,7 +158,6 @@ fun SahayogMainApp() {
                                     text = when (currentRole) {
                                         Role.CUSTOMER -> if (isMarathi) "ग्राहक" else "Consumer"
                                         Role.WORKER -> if (isMarathi) "कामगार" else "Worker"
-                                        Role.COOPERATIVE_ADMIN -> if (isMarathi) "समिती" else "Admin"
                                     },
                                     color = MaterialTheme.colorScheme.onPrimary,
                                     fontSize = 10.sp,
@@ -175,6 +184,36 @@ fun SahayogMainApp() {
                     )
                 },
                 actions = {
+                    // Hub Network Status Chip
+                    Surface(
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { showHubDialog = true },
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Wifi,
+                                contentDescription = "Network Hub",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isHubMode) "Hub" else "Client",
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
                     // 1-Tap Language Toggle Button (English <-> Marathi)
                     Surface(
                         modifier = Modifier
@@ -206,7 +245,7 @@ fun SahayogMainApp() {
                         }
                     }
 
-                    // Switch Role / Logout Button (Allows re-selecting Consumer / Provider without locking user out)
+                    // Switch Role / Logout Button
                     IconButton(
                         onClick = { CoopRepository.logoutUser() },
                         modifier = Modifier.testTag("switch_role_action_button")
@@ -248,13 +287,78 @@ fun SahayogMainApp() {
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Shows ONLY the selected persona's screen!
+            // Shows selected persona's screen
             BoxContent(
                 currentRole = currentRole,
                 onOpenFairness = { showFairnessScreen = true },
                 modifier = Modifier.weight(1f)
             )
         }
+    }
+
+    // Hub Network Setup Dialog
+    if (showHubDialog) {
+        var ipInput by remember { mutableStateOf(hubIp) }
+        AlertDialog(
+            onDismissRequest = { showHubDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Wifi, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Sahayog Local Hub Network", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Connect two phones on the same Wi-Fi/Hotspot without internet.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("This Phone's IP: $localIp:8989", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                            Text("Requests stored in Hub memory & disk: $requestsCount", style = MaterialTheme.typography.bodySmall)
+                            Text("Status: $syncLog", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Run this device as Sahayog Hub", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                        androidx.compose.material3.Switch(
+                            checked = isHubMode,
+                            onCheckedChange = { TwoDeviceSyncManager.setHubMode(it) }
+                        )
+                    }
+
+                    if (!isHubMode) {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = ipInput,
+                            onValueChange = {
+                                ipInput = it
+                                TwoDeviceSyncManager.setHubIp(it)
+                            },
+                            label = { Text("Hub Device IP Address") },
+                            placeholder = { Text("e.g. 192.168.1.10") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showHubDialog = false }) {
+                    Text("Done")
+                }
+            }
+        )
     }
 
     // Reset Confirmation Dialog
@@ -307,12 +411,6 @@ private fun BoxContent(
             }
             Role.WORKER -> {
                 WorkerScreen(repository = CoopRepository)
-            }
-            Role.COOPERATIVE_ADMIN -> {
-                AdminScreen(
-                    repository = CoopRepository,
-                    onOpenFairnessComparison = onOpenFairness
-                )
             }
         }
     }

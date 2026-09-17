@@ -29,7 +29,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Engineering
@@ -107,20 +106,18 @@ fun StartupScreen(
     var selectedRole by remember { mutableStateOf(Role.CUSTOMER) }
 
     // Role-specific fields
-    var workerSkill by remember { mutableStateOf("Electrician") }
+    var workerSkills by remember { mutableStateOf(listOf("Electrician", "Gardener")) }
     var workerExperienceYears by remember { mutableIntStateOf(5) }
     var workerBranch by remember { mutableStateOf("Bangalore Urban Workers Cooperative") }
-    var adminPosition by remember { mutableStateOf("Committee Secretary") }
-    var customerInterest by remember { mutableStateOf("Floor Cleaning") }
+    var customerInterests by remember { mutableStateOf(listOf("Floor Cleaning", "Electrician")) }
 
-    val availableSkills = listOf("Electrician", "Plumber", "Carpenter", "Cleaning", "Painter", "Mason")
+    val availableSkills = listOf("Electrician", "Gardener", "Plumber", "Carpenter", "Cleaning", "Painter", "Mason", "Technician")
     val availableBranches = listOf(
         "Bangalore Urban Workers Cooperative",
         "Mysuru Craftsmen Sahakari Sangha",
         "North Karnataka Artisans Guild"
     )
-    val customerServices = listOf("Floor Cleaning", "Electrician", "Plumber", "Carpenter", "Painter", "Gardening")
-    val adminPositions = listOf("Committee Secretary", "Board President", "Treasurer", "Dispatch Officer")
+    val customerServices = listOf("Floor Cleaning", "Electrician", "Plumber", "Carpenter", "Painter", "Gardening", "Mason", "Technician")
 
     var skillDropdownExpanded by remember { mutableStateOf(false) }
     var branchDropdownExpanded by remember { mutableStateOf(false) }
@@ -130,31 +127,23 @@ fun StartupScreen(
 
     fun completeOnboarding() {
         val fullLocality = if (landmarkInput.isNotBlank()) "$areaInput, $cityInput (Near $landmarkInput)" else "$areaInput, $cityInput"
-        if (onCompleteOnboarding != null) {
-            onCompleteOnboarding(
-                selectedRole,
-                nameInput,
-                phoneInput,
-                areaInput,
-                cityInput,
-                landmarkInput,
-                workerSkill,
-                workerExperienceYears,
-                workerBranch,
-                adminPosition,
-                customerInterest
-            )
-        } else if (onLoginSuccessWithDetails != null) {
-            onLoginSuccessWithDetails(
-                selectedRole,
-                nameInput,
-                phoneInput,
-                fullLocality,
-                workerSkill
-            )
-        } else {
-            onLoginSuccess(selectedRole)
-        }
+        val chosenSkills = if (selectedRole == Role.WORKER) workerSkills.ifEmpty { listOf("Electrician") } else listOf("Electrician")
+        val chosenInterests = if (selectedRole == Role.CUSTOMER) customerInterests.ifEmpty { listOf("Floor Cleaning") } else listOf("Floor Cleaning")
+
+        CoopRepository.loginUser(
+            name = nameInput,
+            phone = phoneInput,
+            locality = fullLocality,
+            role = selectedRole,
+            skills = chosenSkills,
+            areaLocality = areaInput,
+            cityDistrict = cityInput,
+            landmark = landmarkInput,
+            experienceYears = workerExperienceYears,
+            customerServiceInterests = chosenInterests
+        )
+
+        onLoginSuccess(selectedRole)
     }
 
     Surface(
@@ -250,6 +239,7 @@ fun StartupScreen(
                                     cityInput = "Bangalore"
                                     landmarkInput = "100ft Road"
                                     selectedRole = Role.CUSTOMER
+                                    customerInterests = listOf("Floor Cleaning", "Electrician")
                                 }
                                 Role.WORKER -> {
                                     nameInput = "Sunil Kumar"
@@ -258,16 +248,7 @@ fun StartupScreen(
                                     cityInput = "Bangalore"
                                     landmarkInput = "Sony World Signal"
                                     selectedRole = Role.WORKER
-                                    workerSkill = "Electrician"
-                                }
-                                Role.COOPERATIVE_ADMIN -> {
-                                    nameInput = "Dr. Shrikant Deshmukh"
-                                    phoneInput = "9845999888"
-                                    areaInput = "Malleshwaram"
-                                    cityInput = "Bangalore"
-                                    landmarkInput = "Cooperative Central Office"
-                                    selectedRole = Role.COOPERATIVE_ADMIN
-                                    adminPosition = "Committee Secretary"
+                                    workerSkills = listOf("Electrician", "Gardener")
                                 }
                             }
                             currentRoleCompleteOrContinue(presetRole) { completeOnboarding() }
@@ -300,20 +281,29 @@ fun StartupScreen(
                     5 -> Step5RoleDetails(
                         role = selectedRole,
                         isMarathi = isMarathi,
-                        workerSkill = workerSkill,
+                        workerSkills = workerSkills,
                         availableSkills = availableSkills,
                         experienceYears = workerExperienceYears,
                         workerBranch = workerBranch,
                         availableBranches = availableBranches,
-                        adminPosition = adminPosition,
-                        adminPositions = adminPositions,
-                        customerInterest = customerInterest,
+                        customerInterests = customerInterests,
                         customerServices = customerServices,
-                        onSkillChange = { workerSkill = it },
+                        onToggleSkill = { skill ->
+                            workerSkills = if (workerSkills.contains(skill)) {
+                                if (workerSkills.size > 1) workerSkills - skill else workerSkills
+                            } else {
+                                workerSkills + skill
+                            }
+                        },
                         onExperienceChange = { workerExperienceYears = it },
                         onBranchChange = { workerBranch = it },
-                        onAdminPositionChange = { adminPosition = it },
-                        onCustomerInterestChange = { customerInterest = it },
+                        onToggleCustomerInterest = { service ->
+                            customerInterests = if (customerInterests.contains(service)) {
+                                if (customerInterests.size > 1) customerInterests - service else customerInterests
+                            } else {
+                                customerInterests + service
+                            }
+                        },
                         onNext = { currentStep = 6 }
                     )
                     6 -> Step6Confirmation(
@@ -323,11 +313,10 @@ fun StartupScreen(
                         city = cityInput,
                         landmark = landmarkInput,
                         role = selectedRole,
-                        workerSkill = workerSkill,
+                        workerSkills = workerSkills,
                         experienceYears = workerExperienceYears,
                         branch = workerBranch,
-                        adminPosition = adminPosition,
-                        interest = customerInterest,
+                        interests = customerInterests,
                         isMarathi = isMarathi,
                         onConfirm = { completeOnboarding() }
                     )
@@ -420,7 +409,7 @@ private fun Step1Welcome(
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = if (isMarathi) "स्थानिक सुरक्षित डेटा - संपूर्ण ऑफलाइन सहकार्य" else "Offline-First Data Storage • No Cloud Dependencies",
@@ -480,16 +469,7 @@ private fun Step1Welcome(
                         .testTag("quick_worker_btn"),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text(if (isMarathi) "कामगार\n(Worker)" else "Worker\n(Sunil)", textAlign = TextAlign.Center, fontSize = 12.sp)
-                }
-                OutlinedButton(
-                    onClick = { onQuickRoleSelect(Role.COOPERATIVE_ADMIN) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_admin_btn"),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(if (isMarathi) "व्यवस्थापक\n(Admin)" else "Admin\n(Board)", textAlign = TextAlign.Center, fontSize = 12.sp)
+                    Text(if (isMarathi) "कामगार\n(Worker)" else "Worker / Provider\n(Sunil)", textAlign = TextAlign.Center, fontSize = 12.sp)
                 }
             }
         }
@@ -692,28 +672,15 @@ private fun Step4RoleSelection(
 
         // Worker Card
         RoleCard(
-            title = if (isMarathi) "कामगार (Worker)" else "Worker",
+            title = if (isMarathi) "कामगार / सेवा प्रदाता (Worker / Provider)" else "Worker / Service Provider",
             subtitle = if (isMarathi)
-                "काम स्वीकारा, कामाचा पुरावा (GPS + फोटो) जोडा आणि थेट हमी वेतनाचा हक्क मिळवा."
+                "कौशल्यानुसार कामाच्या विनंत्या पहा, काम स्वीकारा आणि थेट हमी वेतनाचा हक्क मिळवा."
             else
-                "Accept jobs, submit tamper-proof GPS & photo proof, and earn guaranteed floor wages.",
+                "Receive matched service requests based on your trade skills and accept bookings.",
             icon = Icons.Default.Engineering,
             isSelected = selectedRole == Role.WORKER,
             testTag = "role_card_worker",
             onClick = { onRoleSelected(Role.WORKER) }
-        )
-
-        // Admin Card
-        RoleCard(
-            title = if (isMarathi) "सहकार व्यवस्थापक (Cooperative Admin)" else "Cooperative Admin",
-            subtitle = if (isMarathi)
-                "तक्रार निवारण, एस्क्रो रिलीज, लाभांश वाटप आणि समन्यायी काम वाटप (Fair Dispatch) तपासा."
-            else
-                "Oversee governance, resolve disputes, release escrow, and monitor fair dispatch.",
-            icon = Icons.Default.AdminPanelSettings,
-            isSelected = selectedRole == Role.COOPERATIVE_ADMIN,
-            testTag = "role_card_admin",
-            onClick = { onRoleSelected(Role.COOPERATIVE_ADMIN) }
         )
 
         Spacer(modifier = Modifier.weight(1f))
@@ -804,20 +771,17 @@ private fun RoleCard(
 private fun Step5RoleDetails(
     role: Role,
     isMarathi: Boolean,
-    workerSkill: String,
+    workerSkills: List<String>,
     availableSkills: List<String>,
     experienceYears: Int,
     workerBranch: String,
     availableBranches: List<String>,
-    adminPosition: String,
-    adminPositions: List<String>,
-    customerInterest: String,
+    customerInterests: List<String>,
     customerServices: List<String>,
-    onSkillChange: (String) -> Unit,
+    onToggleSkill: (String) -> Unit,
     onExperienceChange: (Int) -> Unit,
     onBranchChange: (String) -> Unit,
-    onAdminPositionChange: (String) -> Unit,
-    onCustomerInterestChange: (String) -> Unit,
+    onToggleCustomerInterest: (String) -> Unit,
     onNext: () -> Unit
 ) {
     Column(
@@ -827,8 +791,7 @@ private fun Step5RoleDetails(
         Text(
             text = when (role) {
                 Role.CUSTOMER -> if (isMarathi) "ग्राहक पसंती" else "Customer Preferences"
-                Role.WORKER -> if (isMarathi) "कामगार कौशल्य व अनुभव" else "Worker Trade & Experience"
-                Role.COOPERATIVE_ADMIN -> if (isMarathi) "सहकारी शाखा व पद" else "Cooperative Branch & Role"
+                Role.WORKER -> if (isMarathi) "कामगार कौशल्ये व अनुभव" else "Provider Trades & Experience"
             },
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
@@ -838,9 +801,9 @@ private fun Step5RoleDetails(
             Role.CUSTOMER -> {
                 Text(
                     text = if (isMarathi)
-                        "आपल्याला कोणत्या प्रकारच्या सेवांची प्रामुख्याने आवश्यकता आहे ते निवडा:"
+                        "आपल्याला वारंवार लागणाऱ्या सेवा निवडा (एकापेक्षा जास्त निवडू शकता):"
                     else
-                        "Select the service category you are most frequently interested in:",
+                        "Select services you frequently request (Tap to multi-select):",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -851,10 +814,10 @@ private fun Step5RoleDetails(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     customerServices.forEach { service ->
-                        val selected = customerInterest.equals(service, ignoreCase = true)
+                        val selected = customerInterests.contains(service)
                         FilterChip(
                             selected = selected,
-                            onClick = { onCustomerInterestChange(service) },
+                            onClick = { onToggleCustomerInterest(service) },
                             label = { Text(service) },
                             leadingIcon = if (selected) {
                                 { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
@@ -865,11 +828,21 @@ private fun Step5RoleDetails(
                         )
                     }
                 }
+
+                Text(
+                    text = "Selected: ${customerInterests.size} categories",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
             Role.WORKER -> {
                 Text(
-                    text = if (isMarathi) "आपले मुख्य कौशल्य (Trade / Skill):" else "Select your primary trade / skill:",
+                    text = if (isMarathi)
+                        "आपली कौशल्ये / व्यवसाय निवडा (उदा. Electrician, Gardener):"
+                    else
+                        "Select your verified trade skills (Multi-select supported):",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium
                 )
@@ -880,10 +853,10 @@ private fun Step5RoleDetails(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     availableSkills.forEach { skill ->
-                        val selected = workerSkill.equals(skill, ignoreCase = true)
+                        val selected = workerSkills.contains(skill)
                         FilterChip(
                             selected = selected,
-                            onClick = { onSkillChange(skill) },
+                            onClick = { onToggleSkill(skill) },
                             label = { Text(skill) },
                             leadingIcon = if (selected) {
                                 { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
@@ -892,7 +865,21 @@ private fun Step5RoleDetails(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Active Trades (${workerSkills.size}): ${workerSkills.joinToString(", ")}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
                     text = if (isMarathi) "कामाचा अनुभव: $experienceYears वर्षे" else "Experience: $experienceYears years",
@@ -929,64 +916,6 @@ private fun Step5RoleDetails(
                     }
                 }
             }
-
-            Role.COOPERATIVE_ADMIN -> {
-                Text(
-                    text = if (isMarathi) "शाखा निवडा:" else "Cooperative Branch:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
-                )
-
-                availableBranches.forEach { branch ->
-                    val selected = workerBranch == branch
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onBranchChange(branch) }
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (selected) Icons.Default.CheckCircle else Icons.Default.VerifiedUser,
-                            contentDescription = null,
-                            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = branch,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = if (isMarathi) "समिती पद / जबाबदारी:" else "Committee Role:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
-                )
-
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    adminPositions.forEach { pos ->
-                        val selected = adminPosition == pos
-                        FilterChip(
-                            selected = selected,
-                            onClick = { onAdminPositionChange(pos) },
-                            label = { Text(pos) },
-                            leadingIcon = if (selected) {
-                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                            } else null
-                        )
-                    }
-                }
-            }
         }
 
         Spacer(modifier = Modifier.weight(1f))
@@ -1017,11 +946,10 @@ private fun Step6Confirmation(
     city: String,
     landmark: String,
     role: Role,
-    workerSkill: String,
+    workerSkills: List<String>,
     experienceYears: Int,
     branch: String,
-    adminPosition: String,
-    interest: String,
+    interests: List<String>,
     isMarathi: Boolean,
     onConfirm: () -> Unit
 ) {
@@ -1059,8 +987,7 @@ private fun Step6Confirmation(
                     Text(
                         text = when (role) {
                             Role.CUSTOMER -> if (isMarathi) "ग्राहक (Customer)" else "Customer"
-                            Role.WORKER -> if (isMarathi) "कामगार (Worker)" else "Worker"
-                            Role.COOPERATIVE_ADMIN -> if (isMarathi) "व्यवस्थापक (Admin)" else "Cooperative Admin"
+                            Role.WORKER -> if (isMarathi) "कामगार / सेवा प्रदाता (Provider)" else "Worker / Provider"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
@@ -1079,15 +1006,11 @@ private fun Step6Confirmation(
 
                 when (role) {
                     Role.CUSTOMER -> {
-                        ReviewRow(label = if (isMarathi) "प्राधान्य सेवा" else "Preferred Service", value = interest)
+                        ReviewRow(label = if (isMarathi) "प्राधान्य सेवा" else "Preferred Services", value = interests.joinToString(", "))
                     }
                     Role.WORKER -> {
-                        ReviewRow(label = if (isMarathi) "कौशल्य" else "Skill / Trade", value = workerSkill)
+                        ReviewRow(label = if (isMarathi) "कौशल्ये (Trades)" else "Trade Skills", value = workerSkills.joinToString(", "))
                         ReviewRow(label = if (isMarathi) "अनुभव" else "Experience", value = "$experienceYears years")
-                    }
-                    Role.COOPERATIVE_ADMIN -> {
-                        ReviewRow(label = if (isMarathi) "शाखा" else "Branch", value = branch)
-                        ReviewRow(label = if (isMarathi) "पद" else "Position", value = adminPosition)
                     }
                 }
             }

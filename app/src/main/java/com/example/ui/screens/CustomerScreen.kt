@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Carpenter
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Explore
@@ -48,6 +49,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Plumbing
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -65,6 +67,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -115,11 +118,15 @@ import com.example.data.model.Role
 import com.example.data.model.ServiceCategory
 import com.example.data.preferences.UserPreferences
 import com.example.data.repository.CoopRepository
+import com.example.data.model.ServiceRequirement
 import com.example.ui.components.StatusBadge
 import com.example.util.AppLanguage
 import com.example.util.Localization
 import com.example.util.NotificationHelper
 import com.example.util.TwoDeviceSyncManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -151,8 +158,8 @@ fun CustomerScreen(
     // Filter for requests
     var bookingFilter by remember { mutableStateOf("ALL") }
 
-    // Customer's jobs
-    val customerJobs = jobs.filter { it.customerId == activeCustomer.id || it.customerId == "user_cust" || it.customerId == "cust_1" }
+    // Customer's jobs strictly scoped to this customer identity
+    val customerJobs = jobs.filter { it.customerId == activeCustomer.id }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -286,27 +293,31 @@ fun CustomerScreen(
             adminFeePercent = coop.adminFeePercent,
             isMarathi = isMarathi,
             onDismiss = { showCustomRequestDialog = false },
-            onConfirmBooking = { skill, location, date, time, durationMinutes, pricePaise, notes ->
-                val result = repository.bookJob(
-                    skill = skill,
+            onConfirmBooking = { requirements, location, date, time, durationMinutes, pricePaise, notes ->
+                val title = if (requirements.size == 1) {
+                    "${requirements[0].quantity}x ${requirements[0].skill} Request"
+                } else {
+                    "${requirements.sumOf { it.quantity }} Workers (${requirements.joinToString(", ") { "${it.quantity} ${it.skill}" }})"
+                }
+                val result = repository.bookMultiRequirementJob(
+                    requirements = requirements,
                     location = location,
                     dateTime = "$date, $time",
                     durationMinutes = durationMinutes,
                     priceInPaise = pricePaise,
-                    title = "$skill Service Request",
-                    description = notes,
-                    date = date,
-                    preferredTime = time,
+                    title = title,
                     instructions = notes
                 )
                 showCustomRequestDialog = false
                 if (result.isSuccess) {
                     val createdJob = result.getOrNull()
                     if (createdJob != null) {
-                        TwoDeviceSyncManager.broadcastNewJob(createdJob)
+                        CoroutineScope(Dispatchers.IO).launch {
+                            TwoDeviceSyncManager.postRequestToHub(createdJob)
+                        }
                         NotificationHelper.notifyNewRequest(
                             context,
-                            skill,
+                            createdJob.skill,
                             pricePaise,
                             location
                         )
@@ -677,10 +688,12 @@ private fun CustomerProfileTab(
 ) {
     val syncLog by TwoDeviceSyncManager.syncLog.collectAsState()
     val localIp by TwoDeviceSyncManager.localIp.collectAsState()
-    val partnerIp by TwoDeviceSyncManager.partnerIp.collectAsState()
+    val isHubMode by TwoDeviceSyncManager.isHubMode.collectAsState()
+    val hubIp by TwoDeviceSyncManager.hubIp.collectAsState()
     val demoSimulation by TwoDeviceSyncManager.demoSimulationEnabled.collectAsState()
+    val requestsCount by TwoDeviceSyncManager.requestsCount.collectAsState()
 
-    var partnerIpInput by remember { mutableStateOf(partnerIp) }
+    var hubIpInput by remember(hubIp) { mutableStateOf(hubIp) }
 
     LazyColumn(
         modifier = Modifier
@@ -754,28 +767,16 @@ private fun CustomerProfileTab(
                         Icon(Icons.Default.Wifi, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (isMarathi) "दोन उपकरणे थेट सिंक (Local Wi-Fi)" else "Two-Device Local Wi-Fi Sync",
+                            text = if (isMarathi) "सहयोग नेटवर्क हब (Local Wi-Fi Sync)" else "Sahayog Multi-Phone Hub Network",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
                     Text(
-                        text = "My Device IP: $localIp (Port 8989)",
+                        text = "This Device IP: $localIp (Port 8989)",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold
-                    )
-
-                    OutlinedTextField(
-                        value = partnerIpInput,
-                        onValueChange = {
-                            partnerIpInput = it
-                            TwoDeviceSyncManager.setPartnerIp(it)
-                        },
-                        label = { Text("Worker Phone IP Address") },
-                        placeholder = { Text("e.g. 192.168.1.5") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
                     )
 
                     Row(
@@ -784,7 +785,56 @@ private fun CustomerProfileTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Auto-Simulation Mode (Single Device)",
+                            text = "Run this phone as Sahayog Hub",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Switch(
+                            checked = isHubMode,
+                            onCheckedChange = { TwoDeviceSyncManager.setHubMode(it) }
+                        )
+                    }
+
+                    if (isHubMode) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "★ Operating as Dedicated Sahayog Hub",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Active requests stored on Hub: $requestsCount",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = hubIpInput,
+                            onValueChange = {
+                                hubIpInput = it
+                                TwoDeviceSyncManager.setHubIp(it)
+                            },
+                            label = { Text("Sahayog Hub Phone IP Address") },
+                            placeholder = { Text("e.g. 192.168.1.10") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Single-Phone Simulation Mode",
                             style = MaterialTheme.typography.bodySmall
                         )
                         Switch(
@@ -799,7 +849,7 @@ private fun CustomerProfileTab(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Sync Status: $syncLog",
+                            text = "Hub Sync: $syncLog",
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(8.dp)
                         )
@@ -857,7 +907,7 @@ private fun CustomerProfileTab(
                     Column {
                         Text(text = if (isMarathi) "भूमिका बदला / प्रोफाइल रीसेट" else "Change Role / Edit Profile", fontWeight = FontWeight.Medium)
                         Text(
-                            text = if (isMarathi) "कामगार किंवा व्यवस्थापक भूमिकेत जाण्यासाठी" else "Switch to Worker or Admin onboarding",
+                            text = if (isMarathi) "कामगार भूमिकेत जाण्यासाठी" else "Switch to Provider onboarding",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -973,9 +1023,81 @@ private fun CustomerJobCardDetailed(
                 }
             }
 
+            // Multi-Requirement Breakdown & Staffing
+            if (job.requirements.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Service Requirements (${job.assignedWorkersCount()}/${job.totalWorkersNeeded()} Assigned)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        job.requirements.forEach { req ->
+                            val isReqFull = req.isFullyAssigned()
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            getCategoryIcon(req.skill),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "${req.quantity}x ${req.skill}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isReqFull) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                                    ) {
+                                        Text(
+                                            text = if (isReqFull) "Filled (${req.quantity}/${req.quantity}) ✓" else "${req.assignedProviderIds.size}/${req.quantity} filled",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isReqFull) Color(0xFF1B5E20) else MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                if (req.assignedProviderNames.isNotEmpty()) {
+                                    Text(
+                                        text = "Staff: ${req.assignedProviderNames.joinToString(", ")}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF2E7D32),
+                                        modifier = Modifier.padding(start = 22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // CRITICAL SPEC REQUIREMENT: WHEN WORKER ACCEPTS -> CUSTOMER MUST SEE: "Worker accepted"
-            if (job.status == JobStatus.ACCEPTED || (job.workerId != null && (job.status == JobStatus.IN_PROGRESS || job.status == JobStatus.COMPLETED))) {
+            val allAssignedNames = job.allAssignedProviderNames()
+            if (job.status == JobStatus.ACCEPTED || job.isFullyAssigned() || (allAssignedNames.isNotEmpty() && (job.status == JobStatus.IN_PROGRESS || job.status == JobStatus.COMPLETED))) {
                 val assignedWorker = CoopRepository.workers.value.firstOrNull { it.id == job.workerId }
+                val displayNames = if (allAssignedNames.isNotEmpty()) allAssignedNames.joinToString(", ") else (assignedWorker?.name ?: "Worker")
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = Color(0xFFE8F5E9),
@@ -992,14 +1114,14 @@ private fun CustomerJobCardDetailed(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (isMarathi) "कामगाराने काम स्वीकारले! (Worker accepted)" else "Worker accepted",
+                                text = if (isMarathi) "कामगारांनी काम स्वीकारले! (Workers accepted)" else "Workers accepted (Fully staffed)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1B5E20)
                             )
                         }
                         Text(
-                            text = "Worker: ${assignedWorker?.name ?: "Sunil Kumar"} • Skill: ${job.skill}",
+                            text = "Assigned Workers: $displayNames",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF1B5E20)
@@ -1008,6 +1130,37 @@ private fun CustomerJobCardDetailed(
                             text = "Date/Time: ${job.dateTime} • Status: ${job.status.name}",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF2E7D32)
+                        )
+                    }
+                }
+            } else if (job.hasAnyAssigned() && !job.isFullyAssigned()) {
+                // Partially staffed state
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFFFF8E1),
+                    border = BorderStroke(1.dp, Color(0xFFFFE082)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.HourglassTop,
+                                contentDescription = null,
+                                tint = Color(0xFFF57F17),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Partially Staffed (${job.assignedWorkersCount()}/${job.totalWorkersNeeded()} accepted)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE65100)
+                            )
+                        }
+                        Text(
+                            text = "Accepted: ${allAssignedNames.joinToString(", ")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFE65100)
                         )
                     }
                 }
@@ -1179,6 +1332,11 @@ private fun ServiceCategoryCard(
 // -------------------------------------------------------------------------------------
 // CUSTOM REQUEST MODAL WITH STRICT WAGE-FLOOR VALIDATION
 // -------------------------------------------------------------------------------------
+private data class RequirementDraft(
+    val skill: String,
+    val quantity: Int
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CustomerRequestModal(
@@ -1187,25 +1345,33 @@ private fun CustomerRequestModal(
     adminFeePercent: Int,
     isMarathi: Boolean,
     onDismiss: () -> Unit,
-    onConfirmBooking: (skill: String, location: String, date: String, time: String, durationMinutes: Int, pricePaise: Long, notes: String) -> Unit
+    onConfirmBooking: (requirements: List<ServiceRequirement>, location: String, date: String, time: String, durationMinutes: Int, pricePaise: Long, notes: String) -> Unit
 ) {
-    val skills = listOf("Cleaning", "Electrician", "Plumber", "Carpenter", "Painter", "Gardening", "Mason", "Technician")
-    var selectedSkill by remember { mutableStateOf(preselectedCategory?.name ?: "Cleaning") }
-    var skillDropdownExpanded by remember { mutableStateOf(false) }
+    val skills = listOf("Electrician", "Gardener", "Plumber", "Carpenter", "Cleaning", "Painter", "Mason", "Technician")
+    var requirements by remember {
+        mutableStateOf(
+            listOf(RequirementDraft(preselectedCategory?.name ?: "Electrician", 1))
+        )
+    }
+    var addSkillDropdownExpanded by remember { mutableStateOf(false) }
 
     var locationInput by remember { mutableStateOf(defaultLocation) }
     var dateSelection by remember { mutableStateOf("Today") }
     var preferredTimeInput by remember { mutableStateOf("2:00 PM") }
     var durationHours by remember { mutableFloatStateOf(2.0f) }
-    var offerInput by remember { mutableStateOf(if (preselectedCategory != null) "${(preselectedCategory.hourlyWagePaise * 2) / 100}" else "600") }
+    val durationMinutes = (durationHours * 60).toInt()
+
+    val totalFloorPaise = requirements.sumOf { draft ->
+        WageEngine.calculateMinimumWageFloorInPaise(draft.skill, durationMinutes) * draft.quantity
+    }
+
+    var offerInput by remember(totalFloorPaise) {
+        mutableStateOf("${totalFloorPaise / 100}")
+    }
     var instructionsInput by remember { mutableStateOf("") }
 
-    val durationMinutes = (durationHours * 60).toInt()
     val offeredPricePaise = (offerInput.toLongOrNull() ?: 0L) * 100L
-
-    // Strict cooperative wage floor check
-    val minFloorPaise = WageEngine.calculateMinimumWageFloorInPaise(selectedSkill, durationMinutes)
-    val validation = WageEngine.validatePrice(selectedSkill, durationMinutes, offeredPricePaise)
+    val isWageCompliant = offeredPricePaise >= totalFloorPaise && totalFloorPaise > 0
     val payout = WageEngine.calculatePayoutSplit(offeredPricePaise, adminFeePercent)
 
     AlertDialog(
@@ -1215,8 +1381,9 @@ private fun CustomerRequestModal(
                 Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (isMarathi) "सेवा विनंती पोस्ट करा" else "Request Cooperative Service",
-                    fontWeight = FontWeight.Bold
+                    text = if (isMarathi) "सेवा विनंती तयार करा" else "Multi-Worker Service Request",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
                 )
             }
         },
@@ -1225,39 +1392,134 @@ private fun CustomerRequestModal(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Service Selector
+                // Requirements List Header & Adder
                 item {
-                    ExposedDropdownMenuBox(
-                        expanded = skillDropdownExpanded,
-                        onExpandedChange = { skillDropdownExpanded = it }
-                    ) {
-                        OutlinedTextField(
-                            value = selectedSkill,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Service Type") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = skillDropdownExpanded) },
-                            modifier = Modifier
-                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                                .fillMaxWidth()
-                        )
-                        ExposedDropdownMenu(
-                            expanded = skillDropdownExpanded,
-                            onDismissRequest = { skillDropdownExpanded = false }
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            skills.forEach { skill ->
-                                DropdownMenuItem(
-                                    text = { Text(skill) },
-                                    onClick = {
-                                        selectedSkill = skill
-                                        skillDropdownExpanded = false
-                                        // Auto-adjust offer if below floor
-                                        val newFloor = WageEngine.calculateMinimumWageFloorInPaise(skill, durationMinutes)
-                                        if (offeredPricePaise < newFloor) {
-                                            offerInput = "${newFloor / 100}"
+                            Text(
+                                text = "Requested Workers & Skills",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Box {
+                                TextButton(
+                                    onClick = { addSkillDropdownExpanded = true },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Add Skill", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                DropdownMenu(
+                                    expanded = addSkillDropdownExpanded,
+                                    onDismissRequest = { addSkillDropdownExpanded = false }
+                                ) {
+                                    skills.forEach { skill ->
+                                        DropdownMenuItem(
+                                            text = { Text(skill) },
+                                            onClick = {
+                                                addSkillDropdownExpanded = false
+                                                val existingIndex = requirements.indexOfFirst { it.skill.equals(skill, ignoreCase = true) }
+                                                if (existingIndex >= 0) {
+                                                    requirements = requirements.mapIndexed { idx, draft ->
+                                                        if (idx == existingIndex) draft.copy(quantity = draft.quantity + 1) else draft
+                                                    }
+                                                } else {
+                                                    requirements = requirements + RequirementDraft(skill, 1)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Requirement Cards
+                        requirements.forEachIndexed { index, draft ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            getCategoryIcon(draft.skill),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(draft.skill, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            val singleFloor = WageEngine.calculateMinimumWageFloorInPaise(draft.skill, durationMinutes)
+                                            Text(
+                                                "Floor: ₹${(singleFloor * draft.quantity) / 100} (₹${singleFloor / 100}/ea)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
                                         }
                                     }
-                                )
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = {
+                                                if (draft.quantity > 1) {
+                                                    requirements = requirements.mapIndexed { idx, itm ->
+                                                        if (idx == index) itm.copy(quantity = itm.quantity - 1) else itm
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp),
+                                            enabled = draft.quantity > 1
+                                        ) {
+                                            Icon(Icons.Default.Remove, contentDescription = "Decrease", modifier = Modifier.size(16.dp))
+                                        }
+
+                                        Text(
+                                            text = "${draft.quantity}",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.padding(horizontal = 6.dp)
+                                        )
+
+                                        IconButton(
+                                            onClick = {
+                                                if (draft.quantity < 10) {
+                                                    requirements = requirements.mapIndexed { idx, itm ->
+                                                        if (idx == index) itm.copy(quantity = itm.quantity + 1) else itm
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = "Increase", modifier = Modifier.size(16.dp))
+                                        }
+
+                                        if (requirements.size > 1) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            IconButton(
+                                                onClick = {
+                                                    requirements = requirements.filterIndexed { idx, _ -> idx != index }
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1316,10 +1578,6 @@ private fun CustomerRequestModal(
                             value = durationHours,
                             onValueChange = {
                                 durationHours = it
-                                val newFloor = WageEngine.calculateMinimumWageFloorInPaise(selectedSkill, (it * 60).toInt())
-                                if (offeredPricePaise < newFloor) {
-                                    offerInput = "${newFloor / 100}"
-                                }
                             },
                             valueRange = 1f..10f,
                             steps = 8
@@ -1332,7 +1590,7 @@ private fun CustomerRequestModal(
                     OutlinedTextField(
                         value = offerInput,
                         onValueChange = { offerInput = it },
-                        label = { Text("Customer Offer Amount (₹)") },
+                        label = { Text("Total Customer Offer (₹)") },
                         leadingIcon = { Text("₹", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
@@ -1344,43 +1602,44 @@ private fun CustomerRequestModal(
 
                 // Wage Floor Validation Alert Box (STRICT COMPLIANCE)
                 item {
+                    val totalWorkers = requirements.sumOf { it.quantity }
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = if (validation.isValid) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                        color = if (isWageCompliant) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
                         border = BorderStroke(
                             1.dp,
-                            if (validation.isValid) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.error
+                            if (isWageCompliant) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.error
                         ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = if (validation.isValid) Icons.Default.CheckCircle else Icons.Default.Error,
+                                    imageVector = if (isWageCompliant) Icons.Default.CheckCircle else Icons.Default.Error,
                                     contentDescription = null,
-                                    tint = if (validation.isValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                    tint = if (isWageCompliant) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (validation.isValid)
-                                        "Minimum Wage Floor: ${WageEngine.formatPaiseCompact(minFloorPaise)} (Compliant)"
+                                    text = if (isWageCompliant)
+                                        "Total Wage Floor: ${WageEngine.formatPaiseCompact(totalFloorPaise)} for $totalWorkers Worker(s)"
                                     else
-                                        "Rejected: Below Wage Floor (${WageEngine.formatPaiseCompact(minFloorPaise)})",
+                                        "Rejected: Below Wage Floor (${WageEngine.formatPaiseCompact(totalFloorPaise)})",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (validation.isValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                    color = if (isWageCompliant) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                                 )
                             }
-                            if (!validation.isValid) {
+                            if (!isWageCompliant) {
                                 Text(
-                                    text = validation.reasonMessage,
+                                    text = "Cooperative rules require at least ${WageEngine.formatPaiseCompact(totalFloorPaise)} to fairly compensate $totalWorkers requested workers.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
                             } else {
                                 Text(
-                                    text = "Transparent Split: Worker gets ₹${payout.workerWagePaise / 100} • Coop Fee ₹${payout.adminFeePaise / 100} (₹${payout.welfarePaise / 100} to Welfare Reserve)",
+                                    text = "Split: Workers pooled ₹${payout.workerWagePaise / 100} • Coop Fee ₹${payout.adminFeePaise / 100} (₹${payout.welfarePaise / 100} to Welfare Reserve)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1394,7 +1653,7 @@ private fun CustomerRequestModal(
                     OutlinedTextField(
                         value = instructionsInput,
                         onValueChange = { instructionsInput = it },
-                        label = { Text("Optional Instructions (e.g. bring mop)") },
+                        label = { Text("Optional Instructions (e.g. bring specific tools)") },
                         modifier = Modifier.fillMaxWidth(),
                         maxLines = 2
                     )
@@ -1404,9 +1663,10 @@ private fun CustomerRequestModal(
         confirmButton = {
             Button(
                 onClick = {
-                    if (validation.isValid && locationInput.isNotBlank()) {
+                    if (isWageCompliant && locationInput.isNotBlank() && requirements.isNotEmpty()) {
+                        val finalReqs = requirements.map { ServiceRequirement(skill = it.skill, quantity = it.quantity) }
                         onConfirmBooking(
-                            selectedSkill,
+                            finalReqs,
                             locationInput,
                             dateSelection,
                             preferredTimeInput,
@@ -1416,7 +1676,7 @@ private fun CustomerRequestModal(
                         )
                     }
                 },
-                enabled = validation.isValid && locationInput.isNotBlank(),
+                enabled = isWageCompliant && locationInput.isNotBlank() && requirements.isNotEmpty(),
                 modifier = Modifier.testTag("confirm_post_request_btn")
             ) {
                 Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
